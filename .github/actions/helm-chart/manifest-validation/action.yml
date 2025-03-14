@@ -1,0 +1,11 @@
+name: 'Manifest Validation'
+description: 'Manifests every Helm Chart and performs strict Validation'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red'
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/manifest-validation/dist/index.js

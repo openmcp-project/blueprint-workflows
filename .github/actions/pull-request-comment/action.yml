@@ -1,0 +1,61 @@
+name: 'PR Comment'
+description: 'Pull Request Comments'
+inputs:
+  MESSAGE_HEADER:
+    description: 'MESSAGE_HEADER'
+    required: true
+  BASH_SCRIPT_RESULT:
+    description: 'BASH_SCRIPT_RESULT'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Read Message
+      shell: bash
+      id: read
+      run: |
+        echo BASH_SCRIPT_RESULT: ${{ inputs.BASH_SCRIPT_RESULT }}
+        echo MESSAGE_HEADER: ${{ inputs.MESSAGE_HEADER }}
+
+        if [ -f "${GITHUB_WORKSPACE}/pr-status-check-human-friendly.txt" ]; then          
+          # https://docs.github.com/en/enterprise-cloud@latest/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
+          echo 'MESSAGE<<EOF' >> $GITHUB_OUTPUT
+          cat "${GITHUB_WORKSPACE}/pr-status-check-human-friendly.txt" >> $GITHUB_OUTPUT   
+          echo 'EOF' >> $GITHUB_OUTPUT
+        fi
+
+    - if: ${{ inputs.BASH_SCRIPT_RESULT == 0 }}
+      name: 'Remove Sticky Pull Request Comment'
+      uses: marocchino/sticky-pull-request-comment@v2.9.1
+      with:
+        header: ':star2: :collision: :collision: [${{ inputs.MESSAGE_HEADER }}] :collision: :collision: :collision:'
+        delete: true
+
+    - if: ${{ inputs.BASH_SCRIPT_RESULT != 0 }}
+      name: 'Add Sticky Pull Request Comment'
+      uses: marocchino/sticky-pull-request-comment@v2.9.1
+      with:
+        recreate: true
+        header: ':star2: :collision: :collision: [${{ inputs.MESSAGE_HEADER }}] :collision: :collision: :collision:'
+        message: |
+          ## :star2: :collision: :collision: [${{ inputs.MESSAGE_HEADER }}] :collision: :collision: :collision:
+          <details>
+          <summary><code>detail</code></summary>
+
+          ```bash
+          ${{ steps.read.outputs.MESSAGE }}
+
+          ```
+
+          </details>
+
+    - if: ${{ inputs.BASH_SCRIPT_RESULT != 0 }}
+      name: Throw Error
+      id: 'error'
+      shell: bash
+      run: |
+        echo "::group:: human readable validation result"        
+        echo -e "${{ steps.read.outputs.MESSAGE }}"
+        echo "::endgroup::"        
+        exit 1
