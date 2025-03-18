@@ -57963,7 +57963,7 @@ exports.HelmChartFiles = {
     listingFile: 'helm-chart-listing.yaml'
 };
 exports.envvars = {
-    HELM_REPOS: 'HELM_REPOS',
+    BUILDING_BLOCKS_GIT_REPO_URL: 'BUILDING_BLOCKS_GIT_REPO_URL',
     BRANCH_NAME: 'BRANCH_NAME',
     BASE_BRANCH_NAME: 'BASE_BRANCH_NAME',
     GIT_REPOSITORY_FOLDER: 'GIT_REPOSITORY_FOLDER',
@@ -69045,6 +69045,7 @@ async function run() {
         const BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BRANCH_NAME);
         const BASE_BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BASE_BRANCH_NAME);
         const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
+        const BUILDING_BLOCKS_GIT_REPO_URL = String(process.env[dist_1.constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL]);
         dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
         let utilsHelmChart = dist_1.utils.HelmChart.getInstance();
@@ -69065,7 +69066,7 @@ async function run() {
         /**
         
          *  */
-        await utilsHelmChart.exec('git remote add upstream https://github.tools.sap/cloud-orchestration/mcp-blueprint-building-blocks.git', [], { cwd: GITHUB_WORKSPACE });
+        await utilsHelmChart.exec('git remote add upstream ' + BUILDING_BLOCKS_GIT_REPO_URL, [], { cwd: GITHUB_WORKSPACE });
         await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
         await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
         await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
