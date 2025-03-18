@@ -15,6 +15,9 @@ inputs:
     description: 'Git Branch on which Helm Charts Chart.yaml file will be looked up to determin latest version!'
     required: true
     default: "main"
+  BUILDING_BLOCKS_GIT_REPO_URL:
+    description: 'Git Repository URL of Building Blocks'
+    required: true
 
 runs:
   using: node20
