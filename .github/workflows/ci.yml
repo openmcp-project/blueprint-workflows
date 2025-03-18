@@ -79,6 +79,7 @@ jobs:
       - id: helm-chart-version-bump
         uses: "./.github/actions/helm-chart/version-bump"
         with:
+          BUILDING_BLOCKS_GIT_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
       
       - name: download-helm-docs        
