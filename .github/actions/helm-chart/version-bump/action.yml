@@ -18,6 +18,7 @@ inputs:
   BUILDING_BLOCKS_GIT_REPO_URL:
     description: 'Git Repository URL of Building Blocks'
     required: true
+    default: "https://github.com/openmcp-project/blueprint-building-blocks.git"
 
 runs:
   using: node20
