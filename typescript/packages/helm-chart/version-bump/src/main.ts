@@ -24,8 +24,8 @@ export async function run(): Promise<void> {
     // Specify the directory to start searching from
     const BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BRANCH_NAME)
     const BASE_BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BASE_BRANCH_NAME)
+    const BUILDING_BLOCKS_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL)
     const GITHUB_WORKSPACE = String(process.env[constants.envvars.GITHUB_WORKSPACE])
-    const BUILDING_BLOCKS_GIT_REPO_URL = String(process.env[constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL])
 
     utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + constants.envvars.GITHUB_WORKSPACE + '`!')
 

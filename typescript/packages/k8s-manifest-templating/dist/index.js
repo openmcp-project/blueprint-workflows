@@ -55422,11 +55422,9 @@ exports.HelmChartFiles = {
     listingFile: 'helm-chart-listing.yaml'
 };
 exports.envvars = {
-    HELM_REPOSITORY_URL: 'HELM_REPOSITORY_URL',
+    BUILDING_BLOCKS_GIT_REPO_URL: 'BUILDING_BLOCKS_GIT_REPO_URL',
     BRANCH_NAME: 'BRANCH_NAME',
     BASE_BRANCH_NAME: 'BASE_BRANCH_NAME',
-    HELM_REPO_TOKEN: 'HELM_REPO_TOKEN',
-    HELM_REPO_USERNAME: 'HELM_REPO_USERNAME',
     GIT_REPOSITORY_FOLDER: 'GIT_REPOSITORY_FOLDER',
     GITHUB_WORKSPACE: 'GITHUB_WORKSPACE'
 };
@@ -55783,12 +55781,13 @@ class HelmChart {
         core.debug('Did NOT find Helm Repository Url: `' + helmRepositoryUrl + '`');
         return false;
     }
-    async addRepository(HELM_REPOSITORY_URL, HELM_REPO_USERNAME, HELM_REPO_TOKEN) {
+    async addRepository(HELM_REPOSITORY_NAME, HELM_REPOSITORY_URL, HELM_REPO_USERNAME, HELM_REPO_TOKEN) {
         //
         let args = [
             'repo',
             'add',
-            'cloud-orchestrator-golden-path-building-blocks "' + HELM_REPOSITORY_URL + '"',
+            ' "' + HELM_REPOSITORY_NAME + '"',
+            ' "' + HELM_REPOSITORY_URL + '"',
             ' --username "' + HELM_REPO_USERNAME + '"',
             ' --password "' + HELM_REPO_TOKEN + '"'
         ];

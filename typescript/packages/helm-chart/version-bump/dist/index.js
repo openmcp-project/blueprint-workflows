@@ -69044,8 +69044,8 @@ async function run() {
         // Specify the directory to start searching from
         const BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BRANCH_NAME);
         const BASE_BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BASE_BRANCH_NAME);
+        const BUILDING_BLOCKS_GIT_REPO_URL = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL);
         const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
-        const BUILDING_BLOCKS_GIT_REPO_URL = String(process.env[dist_1.constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL]);
         dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
         let utilsHelmChart = dist_1.utils.HelmChart.getInstance();
