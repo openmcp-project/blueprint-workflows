@@ -69119,6 +69119,10 @@ async function run() {
                                 lineWidth: 0 // Prevents automatic line wrapping
                             };
                             fs.writeFileSync(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml, yaml.stringify(chartYaml, options), 'utf-8');
+                            cmdCommand = 'git config --local user.email "ManagedControlPlane@sap.com"';
+                            result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
+                            cmdCommand = 'git config --local user.name "GH Actions Runner User"';
+                            result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                             await dist_1.utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE);
                             await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + '- >' + baseBranchBumpedVersion + '"', GITHUB_WORKSPACE);
                             break;
