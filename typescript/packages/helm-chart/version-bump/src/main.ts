@@ -96,6 +96,7 @@ export async function run(): Promise<void> {
         const filesOnBaseBranch: string[] = result.stdout.split('\n')
         if (filesOnBaseBranch.includes(relativePath + '/' + constants.HelmChartFiles.Chartyaml)) {
           let cmdCommand: string = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
+          core.debug(cmdCommand)
           let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
           let baseBranchChartYamlDoc: yaml.Document = new yaml.Document(yaml.parse(result.stdout))
 

@@ -69101,6 +69101,7 @@ async function run() {
                 const filesOnBaseBranch = result.stdout.split('\n');
                 if (filesOnBaseBranch.includes(relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml)) {
                     let cmdCommand = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                    core.debug(cmdCommand);
                     let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                     let baseBranchChartYamlDoc = new yaml.Document(yaml.parse(result.stdout));
                     let baseBranchChartVersion = dist_1.utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0');
