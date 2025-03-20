@@ -86,6 +86,11 @@ export async function run(): Promise<void> {
     let modifiedFolders: string[] = result.stdout.split('\n')
 
     if (modifiedFolders.some(str => str.includes('manifests/'))) {
+      let cmdCommand: string = 'git config --local user.email "ManagedControlPlane@sap.com"'
+      result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
+      cmdCommand = 'git config --local user.name "GH Actions Runner User"'
+      result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
+
       await utils.Git.getInstance().add(manifestPath, GITHUB_WORKSPACE)
       await utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts', GITHUB_WORKSPACE)
       await utils.Git.getInstance().push(GITHUB_WORKSPACE)
