@@ -58,6 +58,7 @@ jobs:
     needs: test-typescript
     permissions:
       actions: read
+      checks: write
       contents: read
       pull-requests: write
     steps:      
