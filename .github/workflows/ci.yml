@@ -59,7 +59,7 @@ jobs:
     permissions:
       actions: read
       checks: write
-      contents: read
+      contents: write
       pull-requests: write
     steps:      
       - uses: actions/checkout@v4
