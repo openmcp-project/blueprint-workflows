@@ -1,0 +1,11 @@
+name: 'Dependency Build/Update'
+description: 'Builds/Updates every Helm Chart Dependency'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red' 
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/dep-build/dist/index.js

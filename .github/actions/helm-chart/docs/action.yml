@@ -1,0 +1,11 @@
+name: 'Helm Docs'
+description: 'Generate README.md documentation for every Helm Chart from github.com/norwoodj/helm-docs syntax located in values.yaml.'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red'
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/docs/dist/index.js

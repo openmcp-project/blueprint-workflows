@@ -1,0 +1,139 @@
+name: PR Status Checks
+
+on:
+  workflow_call:
+    inputs:
+      HELM_REPO_NAME:
+        required: false
+        type: string
+        description: 'Helm Repository Name'
+      HELM_REPO_URL:
+        required: false
+        type: string
+        description: 'Helm Repository URL'
+      BUILDING_BLOCKS_GIT_REPO_URL:
+        required: true
+        type: string
+        description: 'Git Building Blocks Repository URL'
+    secrets:
+      HELM_REPO_USERNAME:
+        required: false
+        description: 'Helm Repository Username'
+      HELM_REPO_TOKEN:
+        required: false
+        description: 'Helm Repository Token'
+      
+  
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_DOCS_VERSION: "1.14.2"    
+  HELM_DOCS_PLATFORM: "Linux_x86_64"
+
+jobs:
+  pr-status-check:
+    name: PR Status Check    
+    runs-on: [ubuntu-latest]    
+    steps:      
+      - uses: actions/checkout@v4
+        name: Checkout
+        with:
+          repository: ${{github.event.pull_request.head.repo.full_name}}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+            
+      - id: helm-chart-listing
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@chore/os_preparations"
+
+      # Workflow supports only one helm repo add for now. If you need to add multiple helm repos, you need to copy and modify this workflow.
+      - id: helm-repo-add
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.HELM_REPO_NAME }}" ]; then
+            echo "HELM_REPO_NAME is not set. Skipping helm repo add."
+            exit 0
+          fi
+          if [ -z "${{ inputs.HELM_REPO_URL }}" ]; then
+            echo "HELM_REPO_URL is not set. Skipping helm repo add."
+            exit 0
+          fi
+          if [ -z "${{ secrets.HELM_REPO_USERNAME }}" ]; then
+            helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }}
+            helm repo update
+          elif [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+            echo "HELM_REPO_TOKEN is not set. Skipping helm repo add."
+            exit 0
+          else
+            helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
+            helm repo update
+          fi
+
+      - id: helm-chart-build-dependencies
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/dep-build@chore/os_preparations"
+      
+      - id: helm-chart-linting
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/linting@chore/os_preparations"
+      
+      - id: helm-chart-manifest-validation
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@chore/os_preparations"
+      
+      - id: helm-chart-version-bump
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@chore/os_preparations"
+        with:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          BUILDING_BLOCKS_GIT_REPO_URL: ${{ inputs.BUILDING_BLOCKS_GIT_REPO_URL }}
+      
+      - name: download-helm-docs        
+        shell: bash        
+        run: |
+          set -euo pipefail
+          ############################################################
+          DEST="$RUNNER_TEMP/helm-docs"
+          echo "Downloading..."
+          mkdir -p "$DEST"
+          cd "$DEST"
+
+          if ! curl -sLO  "https://github.com/norwoodj/helm-docs/releases/download/v${{ env.HELM_DOCS_VERSION}}/helm-docs_${{ env.HELM_DOCS_VERSION}}_${{ env.HELM_DOCS_PLATFORM}}.tar.gz"; then
+            echo "!!! ERROR downloading https://github.com/norwoodj/helm-docs/releases/download/v${{ env.HELM_DOCS_VERSION}}/helm-docs_${{ env.HELM_DOCS_VERSION}}_${{ env.HELM_DOCS_PLATFORM}}.tar.gz !!!"
+            exit 1
+          fi
+
+          if ! tar -xzf "helm-docs_${{ env.HELM_DOCS_VERSION}}_${{ env.HELM_DOCS_PLATFORM}}.tar.gz" helm-docs; then
+            echo "!!! ERROR unpacking helm-docs_${{ env.HELM_DOCS_VERSION}}_${{ env.HELM_DOCS_PLATFORM}}.tar.gz !!!"
+            exit 1
+          fi
+          ls -al
+          echo "$DEST" >>$GITHUB_PATH
+          echo $PWD
+          $PWD/helm-docs --version          
+          ############################################################
+        
+      - id: helm-chart-docs
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@chore/os_preparations"         
+      
+      - id: k8s-manifest-templating
+        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@chore/os_preparations"     
+      
+      - uses: LouisBrunner/checks-action@v2.0.0
+        if: always()
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Managed Control Plane Blueprints
+          conclusion: ${{ job.status }}
+          details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      
+      - name: Get commit SHA
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+     
+      - name: Set commit status
+        uses: myrotvorets/set-commit-status-action@master
+        if: always()
+        with:
+          allowForks: true
+          status: ${{ job.status }}
+          sha: ${{ env.commit }}
+          context: "Managed Control Plane Blueprints"
+          targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
