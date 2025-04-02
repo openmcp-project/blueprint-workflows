@@ -11,6 +11,10 @@ on:
         required: false
         type: string
         description: 'Helm Repository URL'
+      HELM_REPO_OCI_URL:
+        required: false
+        type: string
+        description: 'Helm OCI Registry URL'
       BUILDING_BLOCKS_GIT_REPO_URL:
         required: true
         type: string
@@ -35,7 +39,11 @@ env:
 jobs:
   pr-status-check:
     name: PR Status Check    
-    runs-on: [ubuntu-latest]    
+    runs-on: [ubuntu-latest]
+    permissions:
+      pull-requests: write
+      packages: read
+      contents: read
     steps:      
       - uses: actions/checkout@v4
         name: Checkout
@@ -52,23 +60,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${{ inputs.HELM_REPO_NAME }}" ]; then
-            echo "HELM_REPO_NAME is not set. Skipping helm repo add."
-            exit 0
-          fi
-          if [ -z "${{ inputs.HELM_REPO_URL }}" ]; then
-            echo "HELM_REPO_URL is not set. Skipping helm repo add."
-            exit 0
-          fi
-          if [ -z "${{ secrets.HELM_REPO_USERNAME }}" ]; then
-            helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }}
-            helm repo update
-          elif [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
-            echo "HELM_REPO_TOKEN is not set. Skipping helm repo add."
-            exit 0
+          if [ -n "${{ inputs.HELM_REPO_URL }}" ]; then
+            if [ -z "${{ secrets.HELM_REPO_USERNAME }}" ]; then
+              helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }}
+              helm repo update
+            elif [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+              echo "HELM_REPO_TOKEN is not set. Skipping helm repo add."
+              exit 0
+            else
+              helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
+              helm repo update
+            fi
+          elif [ -n "${{ inputs.HELM_REPO_OCI_URL }}" ]; then
+            if [ -z "${{ secrets.HELM_REPO_USERNAME }}" ]; then
+              helm registry login ${{ inputs.HELM_REPO_OCI_URL }}
+            elif [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
+              echo "HELM_REPO_TOKEN is not set. Skipping registry login add."
+              exit 0
+            else
+              helm registry login ${{ inputs.HELM_REPO_OCI_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
+            fi
           else
-            helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
-            helm repo update
+            echo "Neither HELM_REPO_URL nor HELM_REPO_OCI_URL is set. Skipping helm repo add or registry login."
+            exit 0
           fi
 
       - id: helm-chart-build-dependencies
