@@ -11,7 +11,7 @@ on:
         required: false
         type: string
         description: 'Helm Repository URL'
-      HELM_REPO_OCI_URL:
+      HELM_OCI_REGISTRY:
         required: false
         type: string
         description: 'Helm OCI Registry URL'
@@ -71,17 +71,17 @@ jobs:
               helm repo add ${{ inputs.HELM_REPO_NAME }} ${{ inputs.HELM_REPO_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
               helm repo update
             fi
-          elif [ -n "${{ inputs.HELM_REPO_OCI_URL }}" ]; then
+          elif [ -n "${{ inputs.HELM_OCI_REGISTRY }}" ]; then
             if [ -z "${{ secrets.HELM_REPO_USERNAME }}" ]; then
-              helm registry login ${{ inputs.HELM_REPO_OCI_URL }}
+              helm registry login ${{ inputs.HELM_OCI_REGISTRY }}
             elif [ -z "${{ secrets.HELM_REPO_TOKEN }}" ]; then
               echo "HELM_REPO_TOKEN is not set. Skipping registry login add."
               exit 0
             else
-              helm registry login ${{ inputs.HELM_REPO_OCI_URL }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
+              helm registry login ${{ inputs.HELM_OCI_REGISTRY }} --username ${{ secrets.HELM_REPO_USERNAME }} --password ${{ secrets.HELM_REPO_TOKEN }}
             fi
           else
-            echo "Neither HELM_REPO_URL nor HELM_REPO_OCI_URL is set. Skipping helm repo add or registry login."
+            echo "Neither HELM_REPO_URL nor HELM_OCI_REGISTRY is set. Skipping helm repo add or registry login."
             exit 0
           fi
 
