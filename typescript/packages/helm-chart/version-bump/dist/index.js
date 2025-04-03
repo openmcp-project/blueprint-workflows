@@ -58389,8 +58389,8 @@ class HelmChart {
     async DependencyUpdate(dir) {
         let cmdExec = 'helm dependency update ' + path.format(dir);
         let result = await this.exec(cmdExec, []);
-        if (result.stderr) {
-            throw new Error(this.DependencyUpdate.name + '() ' + result.stderr);
+        if (result.exitCode !== 0) {
+            throw new Error(this.DependencyUpdate.name + '() failed with exit code: ' + result.exitCode);
         }
         return result.stdout;
     }
