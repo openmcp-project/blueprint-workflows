@@ -53,7 +53,14 @@ export async function run(): Promise<void> {
     
      *  */
 
-    await utilsHelmChart.exec('git remote add upstream ' + BUILDING_BLOCKS_GIT_REPO_URL, [], { cwd: GITHUB_WORKSPACE })
+    const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
+    let authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL
+
+    if (TOKEN) {
+      authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
+    }
+
+    await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
@@ -117,11 +124,6 @@ export async function run(): Promise<void> {
               }
 
               fs.writeFileSync(GITHUB_WORKSPACE + '/' + relativePath + '/' + constants.HelmChartFiles.Chartyaml, yaml.stringify(chartYaml, options), 'utf-8')
-
-              cmdCommand = 'git config --local user.email "ManagedControlPlane@sap.com"'
-              result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
-              cmdCommand = 'git config --local user.name "GH Actions Runner User"'
-              result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
 
               await utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE)
               await utils.Git.getInstance().commit(

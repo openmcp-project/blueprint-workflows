@@ -59,11 +59,11 @@ for arg in "$@"; do
     executeCmds+=("npm run lint") # # error mcp-blueprint-gh-action/typescript/packages/helm-chart/linting/node_modules/fastq/test/tsconfig.json no such file or directory!
     ;;
   --package)
-    executeCmds+=("rm -r ./dist/")
+    executeCmds+=("rm -rf ./dist/")
     executeCmds+=("npm run package")
     ;;
   --bundle)
-    executeCmds+=("rm -r ./dist/")
+    executeCmds+=("rm -rf ./dist/")
     executeCmds+=("npm run bundle")
     ;;
   --audit-fix)

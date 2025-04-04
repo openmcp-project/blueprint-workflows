@@ -19,6 +19,9 @@ inputs:
     description: 'Git Repository URL of Building Blocks'
     required: true
     default: "https://github.com/openmcp-project/blueprint-building-blocks.git"
+  TOKEN:
+    description: 'GitHub Token'
+    required: false
 
 runs:
   using: node20

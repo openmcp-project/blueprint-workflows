@@ -19,6 +19,7 @@ export declare const envvars: {
     readonly BASE_BRANCH_NAME: "BASE_BRANCH_NAME";
     readonly GIT_REPOSITORY_FOLDER: "GIT_REPOSITORY_FOLDER";
     readonly GITHUB_WORKSPACE: "GITHUB_WORKSPACE";
+    readonly TOKEN: "TOKEN";
 };
 export declare const github: {
     readonly inputGitRepositoryFolder: "GIT_REPOSITORY_FOLDER";
