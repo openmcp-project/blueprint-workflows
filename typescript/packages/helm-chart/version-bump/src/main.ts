@@ -58,6 +58,9 @@ export async function run(): Promise<void> {
 
     if (TOKEN) {
       authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
+      console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl)
+    } else {
+      console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl)
     }
 
     await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
