@@ -104,6 +104,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           path: building-blocks
+          token: ${{ secrets.BUILDING_BLOCKS_GIT_REPO_TOKEN }}
 
       - id: helm-chart-version-bump
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@chore/os_preparations"
