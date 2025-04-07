@@ -26,9 +26,6 @@ on:
       HELM_REPO_TOKEN:
         required: false
         description: 'Helm Repository Token'
-      BUILDING_BLOCKS_GIT_REPO_URL:
-        required: true
-        description: 'Git Building Blocks Repository URL'
       BUILDING_BLOCKS_GIT_REPO_TOKEN:
         required: false
         description: 'Git Building Blocks Repository Token'
