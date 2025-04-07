@@ -97,6 +97,14 @@ jobs:
       - id: helm-chart-manifest-validation
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@chore/os_preparations"
       
+      - uses: actions/checkout@v4
+        name: Checkout Building Blocks
+        with:
+          repository: ${{ inputs.BUILDING_BLOCKS_GIT_REPO_URL }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          path: building-blocks
+
       - id: helm-chart-version-bump
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@chore/os_preparations"
         with:
