@@ -101,7 +101,7 @@ jobs:
         name: Checkout Building Blocks
         with:
           repository: 'openmcp-project/blueprint-building-blocks'
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: 'main'
           fetch-depth: 0
           path: building-blocks
           token: ${{ secrets.BUILDING_BLOCKS_GIT_REPO_TOKEN }}
