@@ -111,7 +111,7 @@ jobs:
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           BUILDING_BLOCKS_GIT_REPO_URL: ${{ inputs.BUILDING_BLOCKS_GIT_REPO_URL }}
-          TOKEN: ${{ secrets.BUILDING_BLOCKS_GIT_REPO_TOKEN }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: download-helm-docs        
         shell: bash        
