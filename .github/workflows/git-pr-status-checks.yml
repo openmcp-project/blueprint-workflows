@@ -55,6 +55,7 @@ jobs:
           repository: ${{github.event.pull_request.head.repo.full_name}}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          token: ${{ inputs.BUILDING_BLOCKS_GIT_REPO_TOKEN }}
             
       - id: helm-chart-listing
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@chore/os_preparations"
