@@ -24,7 +24,7 @@ export async function run(): Promise<void> {
     // Specify the directory to start searching from
     const BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BRANCH_NAME)
     const BASE_BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BASE_BRANCH_NAME)
-    const BUILDING_BLOCKS_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL)
+    //const BUILDING_BLOCKS_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL)
     const GITHUB_WORKSPACE = String(process.env[constants.envvars.GITHUB_WORKSPACE])
 
     utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + constants.envvars.GITHUB_WORKSPACE + '`!')
@@ -48,11 +48,11 @@ export async function run(): Promise<void> {
       { data: 'Status', header: true },
       { data: 'Folder', header: true }
     ]
-    // TODO: does not work for PRs/Branches from a forked repository
     /**
-    
-     *  */
-
+    // TODO:  The following code is needed, because the GH action of helm version bump needs to fetch the main branch of https://github.com/openmcp-project/blueprint-building-blocks.git 
+              to check, if the Chart.yaml .version of the PR/Branches from the forked repository needs to be bumped or not! Currently GH Action helm version bump only works correctly for
+              PRs which are NOT from forked repositories!
+              
     const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
     let authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL
 
@@ -67,7 +67,8 @@ export async function run(): Promise<void> {
     await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
-
+     **/
+    
     let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
     const folders: string[] = result.stdout.split('\n')
 
