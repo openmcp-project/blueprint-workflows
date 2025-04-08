@@ -40,7 +40,6 @@ env:
   HELM_DOCS_PLATFORM: "Linux_x86_64"
 
 permissions:
-  issues: write
   pull-requests: write
   contents: write
 
