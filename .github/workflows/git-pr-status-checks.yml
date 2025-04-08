@@ -39,11 +39,15 @@ env:
   HELM_DOCS_VERSION: "1.14.2"    
   HELM_DOCS_PLATFORM: "Linux_x86_64"
 
+permissions:
+  issues: write
+  pull-requests: write
+  contents: write
+
 jobs:
   pr-status-check:
     name: PR Status Check    
     runs-on: [ubuntu-latest]
-    permissions: write-all
     steps:      
       - uses: actions/checkout@v4
         name: Checkout
