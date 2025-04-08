@@ -48,7 +48,12 @@ jobs:
   pr-status-check:
     name: PR Status Check    
     runs-on: [ubuntu-latest]
-    steps:      
+    steps:
+      - id: git-init
+        shell: bash
+        run: |
+          git config --global user.email "ManagedControlPlane@sap.com"
+          git config --global user.name "GH Actions Runner User"
       - uses: actions/checkout@v4
         name: Checkout
         with:
