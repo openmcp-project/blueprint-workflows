@@ -42,6 +42,7 @@ env:
 permissions:
   pull-requests: write
   contents: write
+  packages: read
 
 jobs:
   pr-status-check:
