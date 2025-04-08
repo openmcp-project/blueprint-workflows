@@ -43,10 +43,7 @@ jobs:
   pr-status-check:
     name: PR Status Check    
     runs-on: [ubuntu-latest]
-    permissions:
-      pull-requests: write
-      packages: read
-      contents: write
+    permissions: write-all
     steps:      
       - uses: actions/checkout@v4
         name: Checkout
