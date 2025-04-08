@@ -68,7 +68,7 @@ export async function run(): Promise<void> {
     await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
      **/
-    
+
     let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
     const folders: string[] = result.stdout.split('\n')
 
