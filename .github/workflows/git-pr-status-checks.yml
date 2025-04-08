@@ -43,11 +43,14 @@ permissions:
   pull-requests: write
   contents: write
   packages: read
-
+  actions: write
+  checks: write
+  statuses: write
+  
 jobs:
   pr-status-check:
     name: PR Status Check    
-    runs-on: [ubuntu-latest]
+    runs-on: [ubuntu-latest]      
     steps:
       - id: git-init
         shell: bash
@@ -142,8 +145,6 @@ jobs:
       
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
-        permissions:
-          pull-requests: write
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           name: Managed Control Plane Blueprints
@@ -156,8 +157,6 @@ jobs:
       - name: Set commit status
         uses: myrotvorets/set-commit-status-action@master
         if: always()
-        permissions:
-          pull-requests: write
         with:
           allowForks: true
           status: ${{ job.status }}
