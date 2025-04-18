@@ -96,11 +96,11 @@ teams:
   #    # * `admin` - can pull, push and administer this repository.
   #    # * `maintain` - Recommended for project managers who need to manage the repository without access to sensitive or destructive actions.
   #    # * `triage` - Recommended for contributors who need to proactively manage issues and pull requests without write access.
-  # - name: 'ketos_github_admin'
+  # - name: 'openmcp_admin'
   #   permission: "admin"
-  # - name: 'ketos_github_maintainer'
+  # - name: 'openmcp_maintainer'
   #   permission: 'maintain'
-  # - name: 'ketos_github_contributer'
+  # - name: 'openmcp_contributer'
   #   permission: 'push'
 
 branches:
