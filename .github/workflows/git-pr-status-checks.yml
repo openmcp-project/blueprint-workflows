@@ -39,31 +39,18 @@ env:
   HELM_DOCS_VERSION: "1.14.2"    
   HELM_DOCS_PLATFORM: "Linux_x86_64"
 
-permissions:
-  pull-requests: write
-  contents: write
-  packages: read
-  actions: write
-  checks: write
-  statuses: write
-  
 jobs:
   pr-status-check:
     name: PR Status Check    
-    runs-on: [ubuntu-latest]      
-    steps:
-      - id: git-init
-        shell: bash
-        run: |
-          git config --global user.email "ManagedControlPlane@sap.com"
-          git config --global user.name "GH Actions Runner User"
+    runs-on: [ubuntu-latest]
+    permissions: write-all
+    steps:      
       - uses: actions/checkout@v4
         name: Checkout
         with:
           repository: ${{github.event.pull_request.head.repo.full_name}}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          #token: ${{ secrets.HELM_REPO_TOKEN }}
             
       - id: helm-chart-listing
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@chore/os_preparations"
