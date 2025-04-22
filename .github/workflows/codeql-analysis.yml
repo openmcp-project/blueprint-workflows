@@ -1,0 +1,91 @@
+name: CodeQL
+
+on:
+  # pull_request:
+  #   branches:
+  #     - main
+  #push:
+  #  branches:
+  #    - main
+  schedule:
+    - cron: '31 7 * * 3'
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover-folders:
+    name: Discover Folders with tsconfig.json
+    runs-on: [ubuntu-latest]
+    outputs:
+      folders: ${{ steps.set-output.outputs.folders }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Find folders containing tsconfig.json
+        id: find-folders
+        run: |
+          # Find all directories containing tsconfig.json
+          folders=$(find . -name "tsconfig.json" -exec dirname {} \;)
+          echo "Found folders:"
+          echo "$folders"
+          
+          # Format as JSON array for GitHub Actions
+          json=$(printf '[%s]' "$(echo "$folders" | jq -R -s -c 'split("\n")[:-1]')")
+          echo "JSON Array: $json"
+          
+          echo "::set-output name=folders::$json"
+      # - name: Find folders containing tsconfig.json
+      #   id: find-folders
+      #   shell: bash        
+      #   run: ${GITHUB_WORKSPACE}/script/collect-package-folders.sh
+
+      - name: Set Output
+        id: set-output
+        run: echo "folders=${{ steps.find-folders.outputs.folders }}"
+        env:
+          folders: ${{ steps.find-folders.outputs.folders }}
+
+  run-codeql-init:
+    name: Run CodeQL Init for Each Folder
+    needs: discover-folders
+    runs-on: [ubuntu-latest]
+    strategy:
+      fail-fast: false      
+      matrix:
+        folder: ${{ fromJson(needs.discover-folders.outputs.folders) }}
+        language:
+          - TypeScript
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL for ${{ matrix.folder }}
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          config-file: ${{ matrix.folder }}/tsconfig.json
+
+      - name: Initialize CodeQL for ${{ matrix.folder }}
+        id: initialize
+        uses: github/codeql-action/init@v3
+        with:
+          #languages: ${{ matrix.language }}
+          languages: TypeScript
+          source-root: ${{ matrix.folder }}/src
+
+      - name: Autobuild
+        id: autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        id: analyze
+        uses: github/codeql-action/analyze@v3

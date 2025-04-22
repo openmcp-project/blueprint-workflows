@@ -1,0 +1,11 @@
+name: 'K8s Manifest Templating'
+description: 'Templates, validates and stores manifest for every Helm Chart in ./manifests folder.'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red'
+
+runs:
+  using: node20
+  main: ../../../typescript/packages/k8s-manifest-templating/dist/index.js

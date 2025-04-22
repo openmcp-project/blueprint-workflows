@@ -1,0 +1,11 @@
+name: 'Listing'
+description: 'List all Helm Packages to be worked on.'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red'
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/listing/dist/index.js

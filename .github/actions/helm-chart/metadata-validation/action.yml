@@ -1,0 +1,38 @@
+name: 'Metadata Validation'
+description: 'Helm Chart Chart.yaml Metadata Validation'
+inputs:
+  BASH_SCRIPT:
+    description: 'BASH_SCRIPT'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: execute-bash-script
+      id: main
+      shell: bash
+      run: |
+        set +e
+        ${GITHUB_ACTION_PATH}/${{inputs.BASH_SCRIPT}} &> ${GITHUB_WORKSPACE}/bash_output.txt
+        echo "BASH_SCRIPT_RESULT=$?" >> "$GITHUB_ENV"
+      env:
+        BASH_SCRIPT: ${{inputs.BASH_SCRIPT}}
+    - name: Bash Output
+      shell: bash
+      if: always()
+      run: |
+        if [ -f "${GITHUB_WORKSPACE}/bash_output.txt" ]; then
+          echo "::group:: Metadata Validation Bash Script Output"
+          cat ${GITHUB_WORKSPACE}/bash_output.txt
+          echo "::endgroup::"
+        fi
+
+        if [ -f "${GITHUB_WORKSPACE}/pr-status-check-human-friendly.txt" ]; then
+          echo "::group:: PR Status Check Human Friendly Output"
+          cat "${GITHUB_WORKSPACE}/pr-status-check-human-friendly.txt"
+          echo "::endgroup::"
+        fi
+
+        if [ -f "${GITHUB_WORKSPACE}/github-workflow-commands.txt" ]; then
+          cat "${GITHUB_WORKSPACE}/github-workflow-commands.txt"
+        fi

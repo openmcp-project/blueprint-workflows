@@ -1,0 +1,28 @@
+name: 'Version Bump'
+description: 'Bumps .version of every modified Helm Chart'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'heart'
+  color: 'red'
+
+# Define your inputs here.
+inputs:
+  BRANCH_NAME:
+    description: 'Local Git Branch that you are currently on!'
+    required: true
+  BASE_BRANCH_NAME:
+    description: 'Git Branch on which Helm Charts Chart.yaml file will be looked up to determin latest version!'
+    required: true
+    default: "main"
+  BUILDING_BLOCKS_GIT_REPO_URL:
+    description: 'Git Repository URL of Building Blocks'
+    required: true
+    default: "https://github.com/openmcp-project/blueprint-building-blocks.git"
+  TOKEN:
+    description: 'GitHub Token'
+    required: false
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/version-bump/dist/index.js
