@@ -134,7 +134,7 @@ jobs:
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Managed Control Plane Blueprints
+          name: open MCP Blueprints
           conclusion: ${{ job.status }}
           details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       
@@ -148,5 +148,5 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "Managed Control Plane Blueprints"
+          context: "open MCP Blueprints"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
