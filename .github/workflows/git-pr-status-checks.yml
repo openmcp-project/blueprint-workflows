@@ -30,6 +30,13 @@ on:
         required: false
         description: 'Git Building Blocks Repository Token'
       
+permissions:
+  pull-requests: write
+  contents: write
+  packages: read
+  actions: write
+  checks: write
+  statuses: write
   
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -43,7 +50,6 @@ jobs:
   pr-status-check:
     name: PR Status Check    
     runs-on: [ubuntu-latest]
-    permissions: write-all
     steps:      
       - uses: actions/checkout@v4
         name: Checkout
