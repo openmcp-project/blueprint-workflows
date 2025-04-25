@@ -136,9 +136,9 @@ jobs:
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   commit-compiled:
-    name: TypeScript Tests
+    name: Commit Compiled JS
     runs-on: [ubuntu-latest] 
-    
+    needs: test-action
     steps:
       - name: Configure Git
         run: |
