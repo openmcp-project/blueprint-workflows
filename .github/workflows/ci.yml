@@ -5,6 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_dispatch: {}
   pull_request:
     branches:
       - main
@@ -133,17 +134,17 @@ jobs:
           sha: ${{ env.commit }}
           context: "Managed Control Plane Blueprints"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    # steps:
-    #   - name: Checkout
-    #     id: checkout
-    #     uses: actions/checkout@v4
 
-  #     - name: Test Local Action
-  #       id: test-action
-  #       uses: ./
-  #       with:
-  #         milliseconds: 2000
-
-  #     - name: Print Output
-  #       id: output
-  #       run: echo "${{ steps.test-action.outputs.time }}"
+  commit-compiled:
+    name: TypeScript Tests
+    runs-on: [ubuntu-latest] 
+    
+    steps:
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+      - name: Commmit Compiled JS
+        run: |
+          git add -A
+          git commit -m "Compiled JS Packages" || echo "No changes to commit"
