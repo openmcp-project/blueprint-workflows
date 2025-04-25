@@ -16,7 +16,7 @@ env:
 
 jobs:
   test-typescript:
-    name: TypeScript Tests
+    name: TS & Action Tests
     runs-on: [ubuntu-latest] 
     permissions:
       actions: read
@@ -43,24 +43,12 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Install Dependencies
-        id: npm-ci        
-        run: make npm-run-ci
-
-      - name: Check Format
-        id: npm-format-check        
-        run: make npm-run-format-check
-
-      - name: Unit Tests
+      - name: Make npm run all
         id: npm-ci-test
-        run: make npm-run-ci-tests
+        run: make npm-run-all
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           GITHUB_STEP_SUMMARY: ${{ github.workspace }}
-
-      - name: Unit Tests
-        id: npm-run-bundle
-        run: make npm-run-bundle
 
       - id: helm-chart-listing
         uses: "./.github/actions/helm-chart/listing"
