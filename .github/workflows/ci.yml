@@ -43,9 +43,17 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Make npm run all
+      - name: Install Dependencies
+        id: npm-ci        
+        run: make npm-run-ci
+
+      - name: Build Packages
+        id: npm-run-bundle
+        run: make npm-run-bundle
+
+      - name: Unit Tests
         id: npm-ci-test
-        run: make npm-run-all
+        run: make npm-run-ci-tests
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           GITHUB_STEP_SUMMARY: ${{ github.workspace }}
