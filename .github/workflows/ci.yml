@@ -115,12 +115,19 @@ jobs:
         run: |
           git add -A
           git commit -m "Compiled JS Packages" || echo "No changes to commit"
+        
+      - name: Push Changes
+        run: |
+          git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "No changes to push"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
 
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Managed Control Plane Blueprints
+          name: "openMCP Blueprint Workflows CI"
           conclusion: ${{ job.status }}
           details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       
@@ -134,5 +141,5 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "Managed Control Plane Blueprints"
+          context: "openMCP Blueprint Workflows CI"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
