@@ -110,7 +110,7 @@ jobs:
       - name: Commmit Compiled JS
         run: |
           git add -A
-          git commit -m "Compiled JS Packages" || echo "No changes to commit"
+          git commit -m "chore(ci): Compiled JS Packages" || echo "No changes to commit"
         
       - name: Push Changes
         run: |
