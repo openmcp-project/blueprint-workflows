@@ -70,7 +70,7 @@ export async function run(): Promise<void> {
     core.notice(util.format(constants.Msgs.HelmChartListingFileWritten, constants.HelmChartFiles.listingFile))
 
     let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
-    if(process.env.JEST_WORKER_ID == undefined) {
+    if (process.env.JEST_WORKER_ID == undefined) {
       await core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent).write()
     }
   } catch (error) {
