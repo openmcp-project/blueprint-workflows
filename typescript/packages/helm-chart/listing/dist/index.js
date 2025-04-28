@@ -66541,7 +66541,9 @@ async function run() {
         });
         core.notice(util.format(dist_1.constants.Msgs.HelmChartListingFileWritten, dist_1.constants.HelmChartFiles.listingFile));
         let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
-        await core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent).write();
+        if (process.env.JEST_WORKER_ID == undefined) {
+            await core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent).write();
+        }
     }
     catch (error) {
         // Fail the workflow run if an error occurs

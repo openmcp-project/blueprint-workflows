@@ -5,6 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_dispatch: {}
   pull_request:
     branches:
       - main
@@ -15,13 +16,25 @@ env:
 
 jobs:
   test-typescript:
-    name: TypeScript Tests
+    name: TS & Action Tests
     runs-on: [ubuntu-latest] 
-    
+    permissions:
+      actions: read
+      checks: write
+      contents: write
+      pull-requests: write
+      statuses: write
     steps:
-      - name: Checkout
-        id: checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        name: Checkout
+        with:
+          repository: ${{github.event.pull_request.head.repo.full_name}}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Setup Node.js
         id: setup-node
@@ -34,9 +47,9 @@ jobs:
         id: npm-ci        
         run: make npm-run-ci
 
-      - name: Check Format
-        id: npm-format-check        
-        run: make npm-run-format-check
+      - name: Build Packages
+        id: npm-run-bundle
+        run: make npm-run-bundle
 
       - name: Unit Tests
         id: npm-ci-test
@@ -44,26 +57,7 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           GITHUB_STEP_SUMMARY: ${{ github.workspace }}
-      # build */dist?
 
-  test-action:
-    name: Test Action    
-    runs-on: [ubuntu-latest] 
-    needs: test-typescript
-    permissions:
-      actions: read
-      checks: write
-      contents: write
-      pull-requests: write
-      statuses: write
-    steps:      
-      - uses: actions/checkout@v4
-        name: Checkout
-        with:
-          repository: ${{github.event.pull_request.head.repo.full_name}}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-            
       - id: helm-chart-listing
         uses: "./.github/actions/helm-chart/listing"
 
@@ -81,7 +75,7 @@ jobs:
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           BUILDING_BLOCKS_GIT_REPO_URL: https://github.com/openmcp-project/blueprint-workflows.git
-      
+
       - name: download-helm-docs        
         shell: bash        
         run: |
@@ -112,12 +106,24 @@ jobs:
       
       - id: k8s-manifest-templating
         uses: "./.github/actions/k8s-manifest-templating"     
-      
+
+      - name: Commmit Compiled JS
+        run: |
+          git add -A
+          git commit -m "chore(ci): Compiled JS Packages" || echo "No changes to commit"
+        
+      - name: Push Changes
+        run: |
+          git push origin HEAD:${{ github.event.pull_request.head.ref }} || echo "No changes to push"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Managed Control Plane Blueprints
+          name: "openMCP Blueprint Workflows CI"
           conclusion: ${{ job.status }}
           details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       
@@ -131,19 +137,5 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "Managed Control Plane Blueprints"
+          context: "openMCP Blueprint Workflows CI"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    # steps:
-    #   - name: Checkout
-    #     id: checkout
-    #     uses: actions/checkout@v4
-
-  #     - name: Test Local Action
-  #       id: test-action
-  #       uses: ./
-  #       with:
-  #         milliseconds: 2000
-
-  #     - name: Print Output
-  #       id: output
-  #       run: echo "${{ steps.test-action.outputs.time }}"

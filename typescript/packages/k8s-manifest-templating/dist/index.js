@@ -66546,15 +66546,11 @@ async function run() {
         await core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legende', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.HelmChartFiles.ciConfigYaml)
+            .addDetails('Legend', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.HelmChartFiles.ciConfigYaml)
             .write();
         let result = await shared_1.utils.Git.getInstance().status(GITHUB_WORKSPACE);
         let modifiedFolders = result.stdout.split('\n');
         if (modifiedFolders.some(str => str.includes('manifests/'))) {
-            let cmdCommand = 'git config --local user.email "ManagedControlPlane@sap.com"';
-            result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
-            cmdCommand = 'git config --local user.name "GH Actions Runner User"';
-            result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
             await shared_1.utils.Git.getInstance().add(manifestPath, GITHUB_WORKSPACE);
             await shared_1.utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts', GITHUB_WORKSPACE);
             await shared_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);

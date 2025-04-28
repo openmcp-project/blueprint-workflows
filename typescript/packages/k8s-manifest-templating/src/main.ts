@@ -77,7 +77,7 @@ export async function run(): Promise<void> {
       .addTable([tableHeader, ...tableRows])
       .addBreak()
       .addDetails(
-        'Legende',
+        'Legend',
         '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + constants.HelmChartFiles.ciConfigYaml
       )
       .write()
