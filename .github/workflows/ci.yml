@@ -72,9 +72,6 @@ jobs:
       
       - id: helm-chart-version-bump
         uses: "./.github/actions/helm-chart/version-bump"
-        with:
-          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
-          ORIGIN_GIT_REPO_URL: https://github.com/openmcp-project/blueprint-workflows.git
 
       - name: download-helm-docs        
         shell: bash        
