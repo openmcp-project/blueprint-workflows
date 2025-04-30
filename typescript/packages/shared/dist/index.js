@@ -29774,7 +29774,7 @@ exports.HelmChartFiles = {
     listingFile: 'helm-chart-listing.yaml'
 };
 exports.envvars = {
-    BUILDING_BLOCKS_GIT_REPO_URL: 'BUILDING_BLOCKS_GIT_REPO_URL',
+    ORIGIN_GIT_REPO_URL: 'ORIGIN_GIT_REPO_URL',
     BRANCH_NAME: 'BRANCH_NAME',
     BASE_BRANCH_NAME: 'BASE_BRANCH_NAME',
     GIT_REPOSITORY_FOLDER: 'GIT_REPOSITORY_FOLDER',
