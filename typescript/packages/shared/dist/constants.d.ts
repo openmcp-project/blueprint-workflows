@@ -14,7 +14,7 @@ export declare const HelmChartFiles: {
     readonly listingFile: "helm-chart-listing.yaml";
 };
 export declare const envvars: {
-    readonly BUILDING_BLOCKS_GIT_REPO_URL: "BUILDING_BLOCKS_GIT_REPO_URL";
+    readonly ORIGIN_GIT_REPO_URL: "ORIGIN_GIT_REPO_URL";
     readonly BRANCH_NAME: "BRANCH_NAME";
     readonly BASE_BRANCH_NAME: "BASE_BRANCH_NAME";
     readonly GIT_REPOSITORY_FOLDER: "GIT_REPOSITORY_FOLDER";

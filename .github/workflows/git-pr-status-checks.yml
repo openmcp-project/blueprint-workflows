@@ -15,10 +15,10 @@ on:
         required: false
         type: string
         description: 'Helm OCI Registry URL'
-      BUILDING_BLOCKS_GIT_REPO_URL:
+      ORIGIN_GIT_REPO_URL:
         required: true
         type: string
-        description: 'Git Building Blocks Repository URL'
+        description: 'Git Building Blocks Repository URL origin'
     secrets:
       HELM_REPO_USERNAME:
         required: false
@@ -26,9 +26,6 @@ on:
       HELM_REPO_TOKEN:
         required: false
         description: 'Helm Repository Token'
-      BUILDING_BLOCKS_GIT_REPO_TOKEN:
-        required: false
-        description: 'Git Building Blocks Repository Token'
       
 permissions:
   pull-requests: write

@@ -15,8 +15,8 @@ inputs:
     description: 'Git Branch on which Helm Charts Chart.yaml file will be looked up to determin latest version!'
     required: true
     default: "main"
-  BUILDING_BLOCKS_GIT_REPO_URL:
-    description: 'Git Repository URL of Building Blocks'
+  ORIGIN_GIT_REPO_URL:
+    description: 'Git Repository URL of Building Blocks origin'
     required: true
     default: "https://github.com/openmcp-project/blueprint-building-blocks.git"
   TOKEN:

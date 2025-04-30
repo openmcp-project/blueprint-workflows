@@ -24,7 +24,7 @@ export async function run(): Promise<void> {
     // Specify the directory to start searching from
     const BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BRANCH_NAME)
     const BASE_BRANCH_NAME: string = utils.checkRequiredInput(constants.envvars.BASE_BRANCH_NAME)
-    //const BUILDING_BLOCKS_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL)
+    //const ORIGIN_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.ORIGIN_GIT_REPO_URL)
     const GITHUB_WORKSPACE = String(process.env[constants.envvars.GITHUB_WORKSPACE])
 
     utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + constants.envvars.GITHUB_WORKSPACE + '`!')
@@ -54,10 +54,10 @@ export async function run(): Promise<void> {
               PRs which are NOT from forked repositories!
               
     const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
-    let authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL
+    let authenticatedRepoUrl = ORIGIN_GIT_REPO_URL
 
     if (TOKEN) {
-      authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
+      authenticatedRepoUrl = ORIGIN_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
       console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl)
     } else {
       console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl)
