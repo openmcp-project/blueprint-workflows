@@ -15,10 +15,6 @@ on:
         required: false
         type: string
         description: 'Helm OCI Registry URL'
-      BUILDING_BLOCKS_GIT_REPO_URL:
-        required: true
-        type: string
-        description: 'Git Building Blocks Repository URL'
     secrets:
       HELM_REPO_USERNAME:
         required: false
@@ -26,9 +22,6 @@ on:
       HELM_REPO_TOKEN:
         required: false
         description: 'Helm Repository Token'
-      BUILDING_BLOCKS_GIT_REPO_TOKEN:
-        required: false
-        description: 'Git Building Blocks Repository Token'
       
 permissions:
   pull-requests: write
@@ -108,6 +101,8 @@ jobs:
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@main"
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          SOURCE_GIT_REPO_URL: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_GIT_REPO_URL: ${{ github.event.pull_request.base.repo.full_name }}
       
       - name: download-helm-docs        
         shell: bash        

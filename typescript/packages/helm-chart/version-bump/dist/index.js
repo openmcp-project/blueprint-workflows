@@ -57963,7 +57963,8 @@ exports.HelmChartFiles = {
     listingFile: 'helm-chart-listing.yaml'
 };
 exports.envvars = {
-    BUILDING_BLOCKS_GIT_REPO_URL: 'BUILDING_BLOCKS_GIT_REPO_URL',
+    SOURCE_GIT_REPO_URL: 'SOURCE_GIT_REPO_URL',
+    TARGET_GIT_REPO_URL: 'TARGET_GIT_REPO_URL',
     BRANCH_NAME: 'BRANCH_NAME',
     BASE_BRANCH_NAME: 'BASE_BRANCH_NAME',
     GIT_REPOSITORY_FOLDER: 'GIT_REPOSITORY_FOLDER',
@@ -69045,7 +69046,7 @@ async function run() {
         // Specify the directory to start searching from
         const BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BRANCH_NAME);
         const BASE_BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BASE_BRANCH_NAME);
-        //const BUILDING_BLOCKS_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.BUILDING_BLOCKS_GIT_REPO_URL)
+        //const ORIGIN_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.ORIGIN_GIT_REPO_URL)
         const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
         dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
@@ -69069,10 +69070,10 @@ async function run() {
                   PRs which are NOT from forked repositories!
                   
         const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
-        let authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL
+        let authenticatedRepoUrl = ORIGIN_GIT_REPO_URL
     
         if (TOKEN) {
-          authenticatedRepoUrl = BUILDING_BLOCKS_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
+          authenticatedRepoUrl = ORIGIN_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
           console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl)
         } else {
           console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl)
