@@ -61,7 +61,7 @@ export async function run(): Promise<void> {
     }
 
     await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
-    await utilsHelmChart.exec('git remote -v', [], { })
+    await utilsHelmChart.exec('git remote -v', [], {})
     await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
@@ -103,7 +103,7 @@ export async function run(): Promise<void> {
         let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
         const filesOnBaseBranch: string[] = result.stdout.split('\n')
         if (filesOnBaseBranch.includes(relativePath + '/' + constants.HelmChartFiles.Chartyaml)) {
-          if(TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
+          if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
             let cmdCommand: string = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
           } else {
             let cmdCommand: string = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'

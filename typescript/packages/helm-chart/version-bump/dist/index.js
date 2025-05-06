@@ -69046,7 +69046,8 @@ async function run() {
         // Specify the directory to start searching from
         const BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BRANCH_NAME);
         const BASE_BRANCH_NAME = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.BASE_BRANCH_NAME);
-        //const ORIGIN_GIT_REPO_URL: string = utils.checkRequiredInput(constants.envvars.ORIGIN_GIT_REPO_URL)
+        const SOURCE_GIT_REPO_URL = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.SOURCE_GIT_REPO_URL);
+        const TARGET_GIT_REPO_URL = dist_1.utils.checkRequiredInput(dist_1.constants.envvars.TARGET_GIT_REPO_URL);
         const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
         dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
@@ -69064,26 +69065,20 @@ async function run() {
             { data: 'Status', header: true },
             { data: 'Folder', header: true }
         ];
-        /**
-        // TODO:  The following code is needed, because the GH action of helm version bump needs to fetch the main branch of https://github.com/openmcp-project/blueprint-building-blocks.git
-                  to check, if the Chart.yaml .version of the PR/Branches from the forked repository needs to be bumped or not! Currently GH Action helm version bump only works correctly for
-                  PRs which are NOT from forked repositories!
-                  
-        const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
-        let authenticatedRepoUrl = ORIGIN_GIT_REPO_URL
-    
+        const TOKEN = core.getInput(dist_1.constants.envvars.TOKEN); // Allow TOKEN to be optional
+        let authenticatedRepoUrl = TARGET_GIT_REPO_URL;
         if (TOKEN) {
-          authenticatedRepoUrl = ORIGIN_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
-          console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl)
-        } else {
-          console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl)
+            authenticatedRepoUrl = TARGET_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`);
+            console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl);
         }
-    
-        await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
-        await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE })
-        await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
-        await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
-         **/
+        else {
+            console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl);
+        }
+        await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
+        await utilsHelmChart.exec('git remote -v', [], {});
+        await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
+        await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
+        await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         const folders = result.stdout.split('\n');
         let foundHelmChartFolderModified = {};
@@ -69114,7 +69109,12 @@ async function run() {
                 let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                 const filesOnBaseBranch = result.stdout.split('\n');
                 if (filesOnBaseBranch.includes(relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml)) {
-                    let cmdCommand = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                    if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
+                        let cmdCommand = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                    }
+                    else {
+                        let cmdCommand = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                    }
                     core.debug(cmdCommand);
                     let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                     let baseBranchChartYamlDoc = new yaml.Document(yaml.parse(result.stdout));
