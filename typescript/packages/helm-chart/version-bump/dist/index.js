@@ -69128,7 +69128,7 @@ async function run() {
                 throw new Error('Could NOT find ' + dist_1.constants.HelmChartFiles.Chartyaml + ' in ' + dir);
             }
             let chartYaml = dist_1.utils.readYamlFile(path.parse(dir + '/' + dist_1.constants.HelmChartFiles.Chartyaml));
-            let chartVersion = dist_1.utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0');
+            let chartVersion = dist_1.utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0'); //Chart version in local branch
             let chartName = dist_1.utils.unrapYamlbyKey(chartYaml, 'name', '-');
             if (dist_1.utils.isFunctionEnabled(path.parse(dir), dist_1.constants.Functionality.helmChartVersionBump, true)) {
                 let cmdCommand = 'git ls-tree -r "origin/' + BASE_BRANCH_NAME + '" --name-only'; //| grep -q \"" + relativePath + "/" + constants.HelmChartFiles.Chartyaml + "$\""
@@ -69144,9 +69144,9 @@ async function run() {
                     core.debug(cmdCommand);
                     let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                     let baseBranchChartYamlDoc = new yaml.Document(yaml.parse(result.stdout));
-                    let baseBranchChartVersion = dist_1.utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0');
+                    let baseBranchChartVersion = dist_1.utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0'); // Chart version in base branch
                     // TODO: could maybe break, if .version is not semver parsable??
-                    let baseBranchBumpedVersion = String(semver.inc(baseBranchChartVersion, 'patch'));
+                    let baseBranchBumpedVersion = String(semver.inc(baseBranchChartVersion, 'patch')); // Bumped chart version in base branch
                     let semVerAction = '-';
                     switch (semver.compare(chartVersion, baseBranchBumpedVersion)) {
                         case 1: // chartVersion > baseBranchBumpedVersion
@@ -69160,7 +69160,7 @@ async function run() {
                             };
                             fs.writeFileSync(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml, yaml.stringify(chartYaml, options), 'utf-8');
                             await dist_1.utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE);
-                            await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + '- >' + baseBranchBumpedVersion + '"', GITHUB_WORKSPACE);
+                            await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + ' -> ' + baseBranchBumpedVersion + '"', GITHUB_WORKSPACE);
                             break;
                         case 0: // chartVersion == baseBranchBumpedVersion
                             semVerAction = '✅ Okay';
@@ -69169,7 +69169,7 @@ async function run() {
                             semVerAction = '⁉️ :interrobang: WTF??';
                             break;
                     }
-                    tableRows.push([chartName, baseBranchChartVersion, chartVersion, semVerAction, relativePath]);
+                    tableRows.push([chartName, baseBranchChartVersion, baseBranchBumpedVersion, semVerAction, relativePath]);
                 }
                 else {
                     // Chart.yaml does not EXIST on BASE_BRANCH_NAME -> new Helm Chart!
