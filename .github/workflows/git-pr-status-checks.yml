@@ -101,8 +101,8 @@ jobs:
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@main"
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
-          SOURCE_GIT_REPO_URL: ${{ github.event.pull_request.head.repo.full_name }}
-          TARGET_GIT_REPO_URL: ${{ github.event.pull_request.base.repo.full_name }}
+          SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
       
       - name: download-helm-docs        
         shell: bash        
