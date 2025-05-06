@@ -61,6 +61,7 @@ export async function run(): Promise<void> {
     }
 
     await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
+    await utilsHelmChart.exec('git remote -v', [], { })
     await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE })
     await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
