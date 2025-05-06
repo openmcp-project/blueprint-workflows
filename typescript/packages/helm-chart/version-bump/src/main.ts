@@ -51,7 +51,7 @@ export async function run(): Promise<void> {
     ]
 
     const TOKEN: string = core.getInput(constants.envvars.TOKEN) // Allow TOKEN to be optional
-    let authenticatedRepoUrl = TAR
+    let authenticatedRepoUrl = TARGET_GIT_REPO_URL
 
     if (TOKEN) {
       authenticatedRepoUrl = TARGET_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`)
