@@ -95,7 +95,7 @@ export async function run(): Promise<void> {
       }
 
       let chartYaml: yaml.Document = utils.readYamlFile(path.parse(dir + '/' + constants.HelmChartFiles.Chartyaml))
-      let chartVersion = utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0')
+      let chartVersion = utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0') //Chart version in local branch
       let chartName = utils.unrapYamlbyKey(chartYaml, 'name', '-')
 
       if (utils.isFunctionEnabled(path.parse(dir), constants.Functionality.helmChartVersionBump, true)) {
@@ -112,9 +112,9 @@ export async function run(): Promise<void> {
           let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
           let baseBranchChartYamlDoc: yaml.Document = new yaml.Document(yaml.parse(result.stdout))
 
-          let baseBranchChartVersion = utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0')
+          let baseBranchChartVersion = utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0') // Chart version in base branch
           // TODO: could maybe break, if .version is not semver parsable??
-          let baseBranchBumpedVersion = String(semver.inc(baseBranchChartVersion, 'patch'))
+          let baseBranchBumpedVersion = String(semver.inc(baseBranchChartVersion, 'patch')) // Bumped chart version in base branch
           let semVerAction: string = '-'
           switch (semver.compare(chartVersion, baseBranchBumpedVersion)) {
             case 1: // chartVersion > baseBranchBumpedVersion
@@ -132,7 +132,7 @@ export async function run(): Promise<void> {
 
               await utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE)
               await utils.Git.getInstance().commit(
-                'chore(ci): update ' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + '- >' + baseBranchBumpedVersion + '"',
+                'chore(ci): update ' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + ' -> ' + baseBranchBumpedVersion + '"',
                 GITHUB_WORKSPACE
               )
 
@@ -145,7 +145,7 @@ export async function run(): Promise<void> {
               semVerAction = '⁉️ :interrobang: WTF??'
               break
           }
-          tableRows.push([chartName, baseBranchChartVersion, chartVersion, semVerAction, relativePath])
+          tableRows.push([chartName, baseBranchChartVersion, baseBranchBumpedVersion, semVerAction, relativePath])
         } else {
           // Chart.yaml does not EXIST on BASE_BRANCH_NAME -> new Helm Chart!
           tableRows.push([chartName, '-', chartVersion, ':sparkle: ❇️ New', relativePath])
