@@ -153,5 +153,4 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "openMCP Blueprints"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
