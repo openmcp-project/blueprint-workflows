@@ -79,10 +79,10 @@ export async function run(): Promise<void> {
           throw new Error('Unable to find key in ' + constants.HelmChartFiles.listingFile + ' for dir ' + dirName)
         }
         foundHelmChartFolderModified[yamlKey] = dirName
+        core.debug('foundHelmChartFolderModified[' + yamlKey + '] = ' + dirName)
       }
     })
     let summaryRawContentModifiedFiles: string = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>'
-    core.debug(foundHelmChartFolderModified)
 
     core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)
     
