@@ -138,5 +138,5 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "openMCP Blueprint Workflows CI"
+          context: "Continuous Integration"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
