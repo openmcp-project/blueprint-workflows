@@ -69107,6 +69107,7 @@ async function run() {
         await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         const folders = result.stdout.split('\n');
+        console.log('Looking for dirs with modified files');
         let foundHelmChartFolderModified = {};
         folders.forEach(function (value) {
             if (dist_1.utils.isFileFoundInPath(dist_1.constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
@@ -69116,14 +69117,24 @@ async function run() {
                     throw new Error('Unable to find key in ' + dist_1.constants.HelmChartFiles.listingFile + ' for dir ' + dirName);
                 }
                 foundHelmChartFolderModified[yamlKey] = dirName;
+                core.debug('foundHelmChartFolderModified[' + yamlKey + '] = ' + dirName);
             }
         });
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
         core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
+        console.log('Looking for ' + dist_1.constants.HelmChartFiles.Chartyaml + ' files');
+        let cmdCommand = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+        let resultFiles = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
+        const filesOnBaseBranch = resultFiles.stdout.split(/\r?\n/);
+        for (const file of filesOnBaseBranch) {
+            core.debug(file);
+        }
         for (const key of Object.keys(foundHelmChartFolderModified)) {
+            console.log('Processing ' + key);
             let listingItem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, key);
             let dir = dist_1.utils.unrapYamlbyKey(listingItem, 'dir');
             let relativePath = dist_1.utils.unrapYamlbyKey(listingItem, 'relativePath');
+            core.debug('dir: ' + key + ' relativePath: ' + relativePath);
             if (dist_1.utils.readYamlFile(path.parse(dir + '/' + dist_1.constants.HelmChartFiles.Chartyaml)) === false) {
                 throw new Error('Could NOT find ' + dist_1.constants.HelmChartFiles.Chartyaml + ' in ' + dir);
             }
@@ -69131,9 +69142,6 @@ async function run() {
             let chartVersion = dist_1.utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0'); //Chart version in local branch
             let chartName = dist_1.utils.unrapYamlbyKey(chartYaml, 'name', '-');
             if (dist_1.utils.isFunctionEnabled(path.parse(dir), dist_1.constants.Functionality.helmChartVersionBump, true)) {
-                let cmdCommand = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep \"' + relativePath + '\"/\"' + dist_1.constants.HelmChartFiles.Chartyaml + '\""';
-                let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
-                const filesOnBaseBranch = result.stdout.split(/\r?\n/);
                 if (filesOnBaseBranch.includes(relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml)) {
                     if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
                         let cmdCommand = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';

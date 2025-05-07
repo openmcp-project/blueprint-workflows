@@ -69,7 +69,7 @@ export async function run(): Promise<void> {
     let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE })
     const folders: string[] = result.stdout.split('\n')
 
-    console.log("Looking for dirs with modified files")
+    console.log('Looking for dirs with modified files')
     let foundHelmChartFolderModified: Record<string, string> = {}
     folders.forEach(function (value: string) {
       if (utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
@@ -85,17 +85,17 @@ export async function run(): Promise<void> {
     let summaryRawContentModifiedFiles: string = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>'
 
     core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)
-    
-    console.log("Looking for " + constants.HelmChartFiles.Chartyaml + " files")
+
+    console.log('Looking for ' + constants.HelmChartFiles.Chartyaml + ' files')
     let cmdCommand: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + constants.HelmChartFiles.Chartyaml + '"'
     let resultFiles = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
     const filesOnBaseBranch: string[] = resultFiles.stdout.split(/\r?\n/)
-    for(const file of filesOnBaseBranch) {
+    for (const file of filesOnBaseBranch) {
       core.debug(file)
     }
 
     for (const key of Object.keys(foundHelmChartFolderModified)) {
-      console.log("Processing " + key)
+      console.log('Processing ' + key)
       let listingItem = utils.unrapYamlbyKey(helmChartListingYamlDoc, key)
       let dir = utils.unrapYamlbyKey(listingItem, 'dir')
       let relativePath = utils.unrapYamlbyKey(listingItem, 'relativePath')
