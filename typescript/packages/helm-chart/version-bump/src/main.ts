@@ -85,10 +85,10 @@ export async function run(): Promise<void> {
     let summaryRawContentModifiedFiles: string = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>'
 
     core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)
-
-    console.log('Looking for ' + constants.HelmChartFiles.Chartyaml + ' files')
-    let cmdCommand: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + constants.HelmChartFiles.Chartyaml + '"'
-    let resultFiles = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
+    
+    console.log("Looking for " + constants.HelmChartFiles.Chartyaml + " files")
+    let cmdChartSearch: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + constants.HelmChartFiles.Chartyaml + '"'
+    let resultFiles = await utilsHelmChart.exec(cmdChartSearch, [], { cwd: GITHUB_WORKSPACE })
     const filesOnBaseBranch: string[] = resultFiles.stdout.split(/\r?\n/)
     for (const file of filesOnBaseBranch) {
       core.debug(file)
@@ -111,13 +111,17 @@ export async function run(): Promise<void> {
 
       if (utils.isFunctionEnabled(path.parse(dir), constants.Functionality.helmChartVersionBump, true)) {
         if (filesOnBaseBranch.includes(relativePath + '/' + constants.HelmChartFiles.Chartyaml)) {
+          console.log('Found ' + constants.HelmChartFiles.Chartyaml + ' in ' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '. Bumping version...')
+          let cmdShowChart: string = ''
           if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
-            let cmdCommand: string = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
+            console.log('Using upstream repo URL: ' + SOURCE_GIT_REPO_URL)
+            cmdShowChart = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
           } else {
-            let cmdCommand: string = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
+            console.log('Using origin repo URL: ' + SOURCE_GIT_REPO_URL)
+            cmdShowChart = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
           }
-          core.debug(cmdCommand)
-          let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
+          core.debug(cmdShowChart)
+          let result = await utilsHelmChart.exec(cmdShowChart, [], { cwd: GITHUB_WORKSPACE })
           let baseBranchChartYamlDoc: yaml.Document = new yaml.Document(yaml.parse(result.stdout))
 
           let baseBranchChartVersion = utils.unrapYamlbyKey(baseBranchChartYamlDoc, 'version', '0.0.0') // Chart version in base branch
