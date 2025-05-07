@@ -69086,8 +69086,9 @@ async function run() {
         let tableRows = [];
         let tableHeader = [
             { data: 'Helm Chart', header: true },
+            { data: 'Local Branch Version', header: true },
             { data: 'Base Branch Version', header: true },
-            { data: 'Lokal Branch Version', header: true },
+            { data: 'Bumped Base Branch Version', header: true },
             { data: 'Status', header: true },
             { data: 'Folder', header: true }
         ];
@@ -69162,10 +69163,15 @@ async function run() {
                     let semVerAction = '-';
                     switch (semver.compare(chartVersion, baseBranchBumpedVersion)) {
                         case 1: // chartVersion > baseBranchBumpedVersion
-                            semVerAction = '✅ Okay';
+                            if (semver.major(chartVersion) == semver.major(baseBranchBumpedVersion) && semver.minor(chartVersion) == semver.minor(baseBranchBumpedVersion)) {
+                                semVerAction = '✳️❗ Multiple Patch Versions Ahead! Reverting to ' + baseBranchBumpedVersion;
+                            }
+                            else {
+                                semVerAction = '✅❗ Okay. Major/Minor Version Bump.';
+                            }
                             break;
                         case -1: // chartVersion < baseBranchBumpedVersion
-                            semVerAction = ':eight_spoked_asterisk: Bumped';
+                            semVerAction = '✳️ Bumped';
                             chartYaml.set('version', baseBranchBumpedVersion);
                             const options = {
                                 lineWidth: 0 // Prevents automatic line wrapping
@@ -69178,26 +69184,28 @@ async function run() {
                             semVerAction = '✅ Okay';
                             break;
                         default:
-                            semVerAction = '⁉️ :interrobang: WTF??';
+                            semVerAction = '⁉️ WTF??';
                             break;
                     }
-                    tableRows.push([chartName, baseBranchChartVersion, baseBranchBumpedVersion, semVerAction, relativePath]);
+                    tableRows.push([chartName, chartVersion, baseBranchChartVersion, baseBranchBumpedVersion, semVerAction, relativePath]);
                 }
                 else {
                     // Chart.yaml does not EXIST on BASE_BRANCH_NAME -> new Helm Chart!
-                    tableRows.push([chartName, '-', chartVersion, ':sparkle: ❇️ New', relativePath]);
+                    tableRows.push([chartName, chartVersion, '-', chartVersion, '❇️ New', relativePath]);
                 }
             }
             else {
-                tableRows.push([chartName, '-', chartVersion, '➖ Disabled', relativePath]);
+                tableRows.push([chartName, chartVersion, '-', chartVersion, '➖ Disabled', relativePath]);
             }
         }
         await core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legende', '✅ = Lokal Branch Chart.yaml .version is equal or greater than Base Branch Chart.yaml .version \n\n :eight_spoked_asterisk: = Lokal Branch Chart.yaml version was bumped \n :sparkle: = Helm Chart does NOT exist on ' +
-            BASE_BRANCH_NAME +
-            ' -> Bump intial Version \n ➖ = Version Bump Feature Disabled by ' +
+            .addDetails('Legend', '✅ = Local branch Chart.yaml .version is equal or greater than Base branch Chart.yaml .version \n' +
+            '✳️ = Local Branch Chart.yaml version was bumped \n' +
+            '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
+            '❗ = Uncommon situation, please check manually \n' +
+            '➖ = Version Bump Feature Disabled by ' +
             dist_1.constants.HelmChartFiles.ciConfigYaml)
             .write();
         core.endGroup();

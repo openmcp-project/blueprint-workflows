@@ -136,7 +136,7 @@ export async function run(): Promise<void> {
               } else {
                 semVerAction = '✅❗ Okay. Major/Minor Version Bump.'
               }
-              
+
               break
             case -1: // chartVersion < baseBranchBumpedVersion
               semVerAction = '✳️ Bumped'
@@ -178,10 +178,11 @@ export async function run(): Promise<void> {
       .addDetails(
         'Legend',
         '✅ = Local branch Chart.yaml .version is equal or greater than Base branch Chart.yaml .version \n' +
-        '✳️ = Local Branch Chart.yaml version was bumped \n' +
-        '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
-        '❗ = Uncommon situation, please check manually \n' +
-        '➖ = Version Bump Feature Disabled by ' + constants.HelmChartFiles.ciConfigYaml
+          '✳️ = Local Branch Chart.yaml version was bumped \n' +
+          '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
+          '❗ = Uncommon situation, please check manually \n' +
+          '➖ = Version Bump Feature Disabled by ' +
+          constants.HelmChartFiles.ciConfigYaml
       )
       .write()
 
