@@ -69131,7 +69131,7 @@ async function run() {
             let chartVersion = dist_1.utils.unrapYamlbyKey(chartYaml, 'version', '0.0.0'); //Chart version in local branch
             let chartName = dist_1.utils.unrapYamlbyKey(chartYaml, 'name', '-');
             if (dist_1.utils.isFunctionEnabled(path.parse(dir), dist_1.constants.Functionality.helmChartVersionBump, true)) {
-                let cmdCommand = 'git ls-tree -r "origin/' + BASE_BRANCH_NAME + '" --name-only | grep -q "' + relativePath + '"/"' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                let cmdCommand = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep -q \"' + relativePath + '\"/\"' + dist_1.constants.HelmChartFiles.Chartyaml + '\""';
                 let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE });
                 const filesOnBaseBranch = result.stdout.split('\n');
                 if (filesOnBaseBranch.includes(relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml)) {
