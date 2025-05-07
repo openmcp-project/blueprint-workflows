@@ -99,8 +99,7 @@ export async function run(): Promise<void> {
       let chartName = utils.unrapYamlbyKey(chartYaml, 'name', '-')
 
       if (utils.isFunctionEnabled(path.parse(dir), constants.Functionality.helmChartVersionBump, true)) {
-        let cmdCommand: string =
-          '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep -q \"' + relativePath + '\"/\"' + constants.HelmChartFiles.Chartyaml + '\""'
+        let cmdCommand: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep \"' + relativePath + '\"/\"' + constants.HelmChartFiles.Chartyaml + '\""'
         let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
         const filesOnBaseBranch: string[] = result.stdout.split('\n')
         if (filesOnBaseBranch.includes(relativePath + '/' + constants.HelmChartFiles.Chartyaml)) {
