@@ -102,7 +102,7 @@ export async function run(): Promise<void> {
         let cmdCommand: string =
           '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep \"' + relativePath + '\"/\"' + constants.HelmChartFiles.Chartyaml + '\""'
         let result = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
-        const filesOnBaseBranch: string[] = result.stdout.split('\n')
+        const filesOnBaseBranch: string[] = result.stdout.split(/\r?\n/)
         if (filesOnBaseBranch.includes(relativePath + '/' + constants.HelmChartFiles.Chartyaml)) {
           if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
             let cmdCommand: string = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '"'
