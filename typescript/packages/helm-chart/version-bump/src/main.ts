@@ -90,7 +90,9 @@ export async function run(): Promise<void> {
     let cmdCommand: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + constants.HelmChartFiles.Chartyaml + '"'
     let resultFiles = await utilsHelmChart.exec(cmdCommand, [], { cwd: GITHUB_WORKSPACE })
     const filesOnBaseBranch: string[] = resultFiles.stdout.split(/\r?\n/)
-    core.debug(filesOnBaseBranch)
+    for(const file of filesOnBaseBranch) {
+      core.debug(file)
+    }
 
     for (const key of Object.keys(foundHelmChartFolderModified)) {
       console.log("Processing " + key)
