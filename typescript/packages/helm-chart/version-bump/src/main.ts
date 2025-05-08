@@ -46,7 +46,7 @@ export async function run(): Promise<void> {
       { data: 'Helm Chart', header: true },
       { data: 'Local Branch Version', header: true },
       { data: 'Base Branch Version', header: true },
-      { data: 'Bumped Base Branch Version', header: true },
+      { data: 'New Version', header: true },
       { data: 'Status', header: true },
       { data: 'Folder', header: true }
     ]
