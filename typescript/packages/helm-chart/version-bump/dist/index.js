@@ -69092,21 +69092,25 @@ async function run() {
             { data: 'Status', header: true },
             { data: 'Folder', header: true }
         ];
-        const TOKEN = core.getInput(dist_1.constants.envvars.TOKEN); // Allow TOKEN to be optional
-        let authenticatedRepoUrl = TARGET_GIT_REPO_URL;
-        if (TOKEN) {
-            authenticatedRepoUrl = TARGET_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`);
-            console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl);
+        let result = await utilsHelmChart.exec('git status', [], { cwd: GITHUB_WORKSPACE });
+        if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
+            const TOKEN = core.getInput(dist_1.constants.envvars.TOKEN); // Allow TOKEN to be optional
+            let authenticatedRepoUrl = TARGET_GIT_REPO_URL;
+            if (TOKEN) {
+                authenticatedRepoUrl = TARGET_GIT_REPO_URL.replace('https://', `https://${TOKEN}@`);
+                console.log('Token found, using authenticated repo URL: ' + authenticatedRepoUrl);
+            }
+            else {
+                console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl);
+            }
+            await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
+            await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
+            await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
+            result = await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         }
         else {
-            console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl);
+            result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         }
-        await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
-        await utilsHelmChart.exec('git remote -v', [], {});
-        await utilsHelmChart.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
-        await utilsHelmChart.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
-        await utilsHelmChart.exec('git diff --name-only "upstream/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
-        let result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         const folders = result.stdout.split('\n');
         console.log('Looking for dirs with modified files');
         let foundHelmChartFolderModified = {};
