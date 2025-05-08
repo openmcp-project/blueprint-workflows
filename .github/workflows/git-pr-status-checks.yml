@@ -135,14 +135,6 @@ jobs:
       - id: k8s-manifest-templating
         uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@main"
       
-      - uses: LouisBrunner/checks-action@v2.0.0
-        if: always()
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: openMCP Blueprints
-          conclusion: ${{ job.status }}
-          details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      
       - name: Get commit SHA
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
      
@@ -153,5 +145,4 @@ jobs:
           allowForks: true
           status: ${{ job.status }}
           sha: ${{ env.commit }}
-          context: "openMCP Blueprints"
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
