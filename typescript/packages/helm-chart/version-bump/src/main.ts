@@ -132,7 +132,7 @@ export async function run(): Promise<void> {
           switch (semver.compare(chartVersion, baseBranchChartVersion)) {
             case 1: // chartVersion > baseBranchChartVersion
               console.log('Chart version is greater than base branch bumped version')
-              if (semver.major(chartVersion) > semver.major(baseBranchBumpedVersion) {
+              if (semver.major(chartVersion) > semver.major(baseBranchBumpedVersion)) {
                 semVerAction = '✅❗ Okay. Major Version increase!'
               } else if (semver.minor(chartVersion) > semver.minor(baseBranchBumpedVersion)) {
                 semVerAction = '✅❗ Okay. Minor Version increase!'
