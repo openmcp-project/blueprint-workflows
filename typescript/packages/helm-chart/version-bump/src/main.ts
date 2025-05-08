@@ -182,20 +182,11 @@ export async function run(): Promise<void> {
       .addBreak()
       .addDetails(
         'Legend',
-<<<<<<< HEAD
-        '✅ = Local branch Chart.yaml .version is equal or greater than Base branch Chart.yaml .version \n' +
-          '✳️ = Local Branch Chart.yaml version was bumped \n' +
-          '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
-          '❗ = Uncommon situation, please check manually \n' +
-          '➖ = Version Bump Feature Disabled by ' +
-          constants.HelmChartFiles.ciConfigYaml
-=======
         '✅ = Local branch Chart.yaml .version is already greater than Base branch Chart.yaml .version\n' +
         '✳️ = Local Branch Chart.yaml version was bumped automatically by patch version\n' +
         '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
         '❗ = Uncommon situation, please check manually \n' +
         '➖ = Version Bump Feature Disabled by ' + constants.HelmChartFiles.ciConfigYaml
->>>>>>> 0597b24 (chore: Fixing version bump cases)
       )
       .write()
 
