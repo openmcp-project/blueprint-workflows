@@ -69161,16 +69161,23 @@ async function run() {
                     // TODO: could maybe break, if .version is not semver parsable??
                     let baseBranchBumpedVersion = String(semver.inc(baseBranchChartVersion, 'patch')); // Bumped chart version in base branch
                     let semVerAction = '-';
-                    switch (semver.compare(chartVersion, baseBranchBumpedVersion)) {
-                        case 1: // chartVersion > baseBranchBumpedVersion
-                            if (semver.major(chartVersion) == semver.major(baseBranchBumpedVersion) && semver.minor(chartVersion) == semver.minor(baseBranchBumpedVersion)) {
-                                semVerAction = '✳️❗ Multiple Patch Versions Ahead! Reverting to ' + baseBranchBumpedVersion;
+                    switch (semver.compare(chartVersion, baseBranchChartVersion)) {
+                        case 1: // chartVersion > baseBranchChartVersion
+                            console.log('Chart version is greater than base branch bumped version');
+                            if (semver.major(chartVersion) > semver.major(baseBranchBumpedVersion)) {
+                                semVerAction = '✅❗ Okay. Major Version increase!';
+                            }
+                            else if (semver.minor(chartVersion) > semver.minor(baseBranchBumpedVersion)) {
+                                semVerAction = '✅❗ Okay. Minor Version increase!';
                             }
                             else {
-                                semVerAction = '✅❗ Okay. Major/Minor Version Bump.';
+                                semVerAction = '✅ Okay. Patch Version increase!';
                             }
+                            baseBranchBumpedVersion = chartVersion;
                             break;
-                        case -1: // chartVersion < baseBranchBumpedVersion
+                        case -1: // chartVersion <= baseBranchChartVersion
+                        case 0:
+                            console.log('Chart version is lesser or equal to base branch  version');
                             semVerAction = '✳️ Bumped';
                             chartYaml.set('version', baseBranchBumpedVersion);
                             const options = {
@@ -69180,10 +69187,9 @@ async function run() {
                             await dist_1.utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE);
                             await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + ' -> ' + baseBranchBumpedVersion + '"', GITHUB_WORKSPACE);
                             break;
-                        case 0: // chartVersion == baseBranchBumpedVersion
-                            semVerAction = '✅ Okay';
-                            break;
                         default:
+                            // This should not happen, but if it does, we need to handle it
+                            console.warn('Chart version is not comparable to base branch version');
                             semVerAction = '⁉️ WTF??';
                             break;
                     }
@@ -69201,8 +69207,8 @@ async function run() {
         await core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legend', '✅ = Local branch Chart.yaml .version is equal or greater than Base branch Chart.yaml .version \n' +
-            '✳️ = Local Branch Chart.yaml version was bumped \n' +
+            .addDetails('Legend', '✅ = Local branch Chart.yaml .version is already greater than Base branch Chart.yaml .version\n' +
+            '✳️ = Local Branch Chart.yaml version was bumped automatically by patch version\n' +
             '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
             '❗ = Uncommon situation, please check manually \n' +
             '➖ = Version Bump Feature Disabled by ' +
