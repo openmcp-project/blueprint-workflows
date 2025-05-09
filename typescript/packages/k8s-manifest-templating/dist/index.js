@@ -55405,7 +55405,10 @@ module.exports = {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
+exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.HelmChartFiles = exports.ListingYamlKeys = exports.CIConfigYamlFile = void 0;
+exports.CIConfigYamlFile = {
+    name: 'ci.config.yaml'
+};
 exports.ListingYamlKeys = {
     dir: 'dir',
     name: 'name',
@@ -55415,7 +55418,6 @@ exports.ListingYamlKeys = {
 };
 exports.HelmChartFiles = {
     Chartyaml: 'Chart.yaml',
-    ciConfigYaml: '.ci.config.yaml',
     valuesCiYaml: 'values.ci.yaml',
     valuesYaml: 'values.yaml',
     ReadmeMd: 'README.md',
@@ -55435,8 +55437,6 @@ exports.github = {
     inputGitRepositoryFolder: 'GIT_REPOSITORY_FOLDER'
 };
 exports.Functionality = {
-    yamllintsh: 'yamllint.sh',
-    yamllint: 'yamllint',
     helmDocs: 'helm-docs',
     helmChartLinting: 'helm-chart-linting',
     helmChartValidation: 'helm-chart-validation',
@@ -55617,12 +55617,12 @@ function readYamlFile(dir) {
     return yaml.parseDocument(fileContent);
 }
 function isFunctionEnabled(dir, functionName, defaultBehavior = true) {
-    if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+    if (fs.existsSync(path.join(path.format(dir), constants.CIConfigYamlFile.name)) == false) {
         return defaultBehavior;
     }
-    const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)));
+    const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.CIConfigYamlFile.name)));
     let ciConfigFileDocFunction = ciConfigFileDoc.get(functionName);
-    // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump / yamllint ect...)
+    // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump ect...)
     if (ciConfigFileDoc.has(functionName) && ciConfigFileDocFunction.has(constants.Yaml.enable) && ciConfigFileDocFunction.get(constants.Yaml.enable).toString() == 'true') {
         core.debug(functionName + ' - enabled=' + ciConfigFileDocFunction.get(constants.Yaml.enable).toString());
         return true;
@@ -55869,10 +55869,10 @@ class HelmChart {
         return result.stdout;
     }
     readPipelineFeatureOptions(dir, functionName) {
-        if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+        if (fs.existsSync(path.join(path.format(dir), constants.CIConfigYamlFile.name)) == false) {
             return false;
         }
-        const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)));
+        const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.CIConfigYamlFile.name)));
         if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
             return false;
         }
@@ -66562,7 +66562,7 @@ async function run() {
         await core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legend', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.HelmChartFiles.ciConfigYaml)
+            .addDetails('Legend', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.CIConfigYamlFile.name)
             .write();
         let result = await shared_1.utils.Git.getInstance().status(GITHUB_WORKSPACE);
         let modifiedFolders = result.stdout.split('\n');

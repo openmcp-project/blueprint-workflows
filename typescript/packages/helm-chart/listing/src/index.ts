@@ -36,7 +36,7 @@ export async function run(): Promise<void> {
     core.debug('Directories containing ' + constants.HelmChartFiles.Chartyaml + ':' + helmChartDirs.map((item: any) => `\n- ${item}`))
     core.endGroup()
 
-    core.startGroup(util.format(constants.Msgs.HelmChartListingFolderContaining, constants.HelmChartFiles.ciConfigYaml))
+    core.startGroup(util.format(constants.Msgs.HelmChartListingFolderContaining, constants.CIConfigYamlFile.name))
 
     const helmChartListingYamlDoc = new yaml.Document({})
     helmChartListingYamlDoc.commentBefore = ' Helm Chart Listing Document which contains all found Helm Charts with ' + constants.HelmChartFiles.Chartyaml

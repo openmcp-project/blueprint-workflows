@@ -78,7 +78,7 @@ export async function run(): Promise<void> {
       .addBreak()
       .addDetails(
         'Legend',
-        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + constants.HelmChartFiles.ciConfigYaml
+        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + constants.CIConfigYamlFile.name
       )
       .write()
 

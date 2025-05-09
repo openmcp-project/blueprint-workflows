@@ -60,15 +60,15 @@ export function readYamlFile(dir: path.FormatInputPathObject): yaml.Document ext
   return yaml.parseDocument(fileContent)
 }
 export function isFunctionEnabled(dir: path.FormatInputPathObject, functionName: string, defaultBehavior: boolean = true): boolean {
-  if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+  if (fs.existsSync(path.join(path.format(dir), constants.CIConfigYamlFile.name)) == false) {
     return defaultBehavior
   }
 
-  const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)))
+  const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.CIConfigYamlFile.name)))
 
   let ciConfigFileDocFunction: any = ciConfigFileDoc.get(functionName)
 
-  // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump / yamllint ect...)
+  // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump ect...)
   if (ciConfigFileDoc.has(functionName) && ciConfigFileDocFunction.has(constants.Yaml.enable) && ciConfigFileDocFunction.get(constants.Yaml.enable).toString() == 'true') {
     core.debug(functionName + ' - enabled=' + ciConfigFileDocFunction.get(constants.Yaml.enable).toString())
     return true
@@ -343,11 +343,11 @@ export class HelmChart {
     return result.stdout
   }
   public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
-    if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+    if (fs.existsSync(path.join(path.format(dir), constants.CIConfigYamlFile.name)) == false) {
       return false
     }
 
-    const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)))
+    const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.CIConfigYamlFile.name)))
     if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
       return false
     }

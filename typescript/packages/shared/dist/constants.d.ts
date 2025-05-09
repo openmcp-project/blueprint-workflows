@@ -1,3 +1,6 @@
+export declare const CIConfigYamlFile: {
+    readonly name: "ci.config.yaml";
+};
 export declare const ListingYamlKeys: {
     readonly dir: "dir";
     readonly name: "name";
@@ -7,7 +10,6 @@ export declare const ListingYamlKeys: {
 };
 export declare const HelmChartFiles: {
     readonly Chartyaml: "Chart.yaml";
-    readonly ciConfigYaml: ".ci.config.yaml";
     readonly valuesCiYaml: "values.ci.yaml";
     readonly valuesYaml: "values.yaml";
     readonly ReadmeMd: "README.md";
@@ -26,8 +28,6 @@ export declare const github: {
     readonly inputGitRepositoryFolder: "GIT_REPOSITORY_FOLDER";
 };
 export declare const Functionality: {
-    yamllintsh: string;
-    yamllint: string;
     helmDocs: string;
     helmChartLinting: string;
     helmChartValidation: string;

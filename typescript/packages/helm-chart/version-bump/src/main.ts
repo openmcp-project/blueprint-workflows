@@ -190,7 +190,7 @@ export async function run(): Promise<void> {
           '❇️ = Helm Chart does NOT exist on Base branch, using local version \n' +
           '❗ = Uncommon situation, please check manually \n' +
           '➖ = Version Bump Feature Disabled by ' +
-          constants.HelmChartFiles.ciConfigYaml
+          constants.CIConfigYamlFile.name
       )
       .write()
 

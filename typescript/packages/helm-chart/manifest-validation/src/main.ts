@@ -71,7 +71,7 @@ export async function run(): Promise<void> {
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
-      .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
+      .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.CIConfigYamlFile.name)
       .write()
 
     core.endGroup()

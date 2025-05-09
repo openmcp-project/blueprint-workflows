@@ -95,7 +95,7 @@ export async function run(): Promise<void> {
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
-      .addDetails('Legende', '✅ = README.md generated \n :heavy_exclamation_mark: = README.md generation disabled by ' + constants.HelmChartFiles.ciConfigYaml)
+      .addDetails('Legende', '✅ = README.md generated \n :heavy_exclamation_mark: = README.md generation disabled by ' + constants.CIConfigYamlFile.name)
       .write()
     core.endGroup()
 
