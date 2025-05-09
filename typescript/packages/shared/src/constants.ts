@@ -1,4 +1,4 @@
-export const CIConfigYaml = {
+export const CIConfigYamlFile = {
   name: 'ci.config.yaml'
 } as const
 
