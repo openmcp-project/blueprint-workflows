@@ -65,7 +65,7 @@ export async function run(): Promise<void> {
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
-      .addDetails('Legende', '✅ = No linting warnings/errors \n :heavy_exclamation_mark: = Linting Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
+      .addDetails('Legende', '✅ = No linting warnings/errors \n :heavy_exclamation_mark: = Linting Disabled by ' + constants.CIConfigYamlFile.name)
       .write()
 
     core.endGroup()

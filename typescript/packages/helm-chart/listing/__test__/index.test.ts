@@ -73,7 +73,7 @@ describe('action', () => {
     expect(fs.existsSync(GITHUB_WORKSPACE + '/' + constants.HelmChartFiles.listingFile)).toBe(true)
 
     expect(startGroupMock).toHaveBeenNthCalledWith(1, util.format(constants.Msgs.HelmChartListingFolderContaining, constants.HelmChartFiles.Chartyaml))
-    expect(startGroupMock).toHaveBeenNthCalledWith(2, util.format(constants.Msgs.HelmChartListingFolderContaining, constants.HelmChartFiles.ciConfigYaml))
+    expect(startGroupMock).toHaveBeenNthCalledWith(2, util.format(constants.Msgs.HelmChartListingFolderContaining, constants.CIConfigYamlFile.name))
     expect(startGroupMock).toHaveBeenNthCalledWith(3, constants.Msgs.HelmChartListingFileYamlContent)
     expect(noticeMock).toHaveBeenCalledWith(util.format(constants.Msgs.HelmChartListingFileWritten, constants.HelmChartFiles.listingFile))
 

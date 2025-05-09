@@ -1,3 +1,7 @@
+export const CIConfigYaml = {
+  name: 'ci.config.yaml'
+} as const
+
 export const ListingYamlKeys = {
   dir: 'dir',
   name: 'name',

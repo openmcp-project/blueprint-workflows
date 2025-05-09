@@ -48,7 +48,7 @@ export async function run(): Promise<void> {
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
-      .addDetails('Legende', '✅ = Helm Chart Dependencies Updated \n :heavy_exclamation_mark: = Update Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
+      .addDetails('Legende', '✅ = Helm Chart Dependencies Updated \n :heavy_exclamation_mark: = Update Disabled by ' + constants.CIConfigYamlFile.name)
       .write()
 
     core.endGroup()
