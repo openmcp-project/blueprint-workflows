@@ -68,7 +68,7 @@ export function isFunctionEnabled(dir: path.FormatInputPathObject, functionName:
 
   let ciConfigFileDocFunction: any = ciConfigFileDoc.get(functionName)
 
-  // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump / yamllint ect...)
+  // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump ect...)
   if (ciConfigFileDoc.has(functionName) && ciConfigFileDocFunction.has(constants.Yaml.enable) && ciConfigFileDocFunction.get(constants.Yaml.enable).toString() == 'true') {
     core.debug(functionName + ' - enabled=' + ciConfigFileDocFunction.get(constants.Yaml.enable).toString())
     return true

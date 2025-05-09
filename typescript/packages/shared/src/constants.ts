@@ -8,7 +8,6 @@ export const ListingYamlKeys = {
 
 export const HelmChartFiles = {
   Chartyaml: 'Chart.yaml',
-  ciConfigYaml: '.ci.config.yaml',
   valuesCiYaml: 'values.ci.yaml',
   valuesYaml: 'values.yaml',
   ReadmeMd: 'README.md',
@@ -31,8 +30,6 @@ export const github = {
 } as const
 
 export const Functionality = {
-  yamllintsh: 'yamllint.sh',
-  yamllint: 'yamllint',
   helmDocs: 'helm-docs',
   helmChartLinting: 'helm-chart-linting',
   helmChartValidation: 'helm-chart-validation',

@@ -26,8 +26,6 @@ export declare const github: {
     readonly inputGitRepositoryFolder: "GIT_REPOSITORY_FOLDER";
 };
 export declare const Functionality: {
-    yamllintsh: string;
-    yamllint: string;
     helmDocs: string;
     helmChartLinting: string;
     helmChartValidation: string;
