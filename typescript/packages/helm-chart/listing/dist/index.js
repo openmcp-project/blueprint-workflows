@@ -55405,7 +55405,7 @@ module.exports = {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
+exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.versionBumpIgnoredFiles = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
 exports.ListingYamlKeys = {
     dir: 'dir',
     name: 'name',
@@ -55421,6 +55421,7 @@ exports.HelmChartFiles = {
     ReadmeMd: 'README.md',
     listingFile: 'helm-chart-listing.yaml'
 };
+exports.versionBumpIgnoredFiles = ['.ci.config.yaml'];
 exports.envvars = {
     SOURCE_GIT_REPO_URL: 'SOURCE_GIT_REPO_URL',
     TARGET_GIT_REPO_URL: 'TARGET_GIT_REPO_URL',
