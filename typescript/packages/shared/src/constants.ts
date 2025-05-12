@@ -1,5 +1,5 @@
 export const CIConfigYamlFile = {
-  name: 'ci.config.yaml'
+  name: '.ci.config.yaml'
 } as const
 
 export const ListingYamlKeys = {
