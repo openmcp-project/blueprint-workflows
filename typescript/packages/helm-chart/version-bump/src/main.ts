@@ -75,20 +75,22 @@ export async function run(): Promise<void> {
 
     console.log('Looking for dirs with modified files')
     let foundHelmChartFolderModified: Record<string, string> = {}
-    folders.filter(filePath => {
-      const fileName = path.basename(filePath);
-      return !constants.versionBumpIgnoredFiles.includes(fileName);
-    }).forEach(function (value: string) {
-      if (utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
-        let dirName: string = String(utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)))
-        let yamlKey = utils.findYamlKeyByDir(helmChartListingFileContent, dirName)
-        if (yamlKey === null) {
-          throw new Error('Unable to find key in ' + constants.HelmChartFiles.listingFile + ' for dir ' + dirName)
+    folders
+      .filter(filePath => {
+        const fileName = path.basename(filePath)
+        return !constants.versionBumpIgnoredFiles.includes(fileName)
+      })
+      .forEach(function (value: string) {
+        if (utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
+          let dirName: string = String(utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)))
+          let yamlKey = utils.findYamlKeyByDir(helmChartListingFileContent, dirName)
+          if (yamlKey === null) {
+            throw new Error('Unable to find key in ' + constants.HelmChartFiles.listingFile + ' for dir ' + dirName)
+          }
+          foundHelmChartFolderModified[yamlKey] = dirName
+          core.debug('foundHelmChartFolderModified[' + yamlKey + '] = ' + dirName)
         }
-        foundHelmChartFolderModified[yamlKey] = dirName
-        core.debug('foundHelmChartFolderModified[' + yamlKey + '] = ' + dirName)
-      }
-    })
+      })
     let summaryRawContentModifiedFiles: string = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>'
 
     core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)

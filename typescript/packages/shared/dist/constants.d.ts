@@ -13,6 +13,7 @@ export declare const HelmChartFiles: {
     readonly ReadmeMd: "README.md";
     readonly listingFile: "helm-chart-listing.yaml";
 };
+export declare const versionBumpIgnoredFiles: string[];
 export declare const envvars: {
     readonly SOURCE_GIT_REPO_URL: "SOURCE_GIT_REPO_URL";
     readonly TARGET_GIT_REPO_URL: "TARGET_GIT_REPO_URL";
