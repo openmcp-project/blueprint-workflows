@@ -15,6 +15,10 @@ export const HelmChartFiles = {
   listingFile: 'helm-chart-listing.yaml'
 } as const
 
+export const versionBumpIgnoredFiles: string[] = [
+  ".ci.config.yaml"
+] as const
+
 export const envvars = {
   SOURCE_GIT_REPO_URL: 'SOURCE_GIT_REPO_URL',
   TARGET_GIT_REPO_URL: 'TARGET_GIT_REPO_URL',

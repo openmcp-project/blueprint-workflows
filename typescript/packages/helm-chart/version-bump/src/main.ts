@@ -75,7 +75,10 @@ export async function run(): Promise<void> {
 
     console.log('Looking for dirs with modified files')
     let foundHelmChartFolderModified: Record<string, string> = {}
-    folders.forEach(function (value: string) {
+    folders.filter(filePath => {
+      const fileName = path.basename(filePath);
+      return !constants.versionBumpIgnoredFiles.includes(fileName);
+    }).forEach(function (value: string) {
       if (utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
         let dirName: string = String(utils.isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)))
         let yamlKey = utils.findYamlKeyByDir(helmChartListingFileContent, dirName)
