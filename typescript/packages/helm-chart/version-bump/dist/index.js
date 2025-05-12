@@ -57959,7 +57959,7 @@ module.exports = {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.HelmChartFiles = exports.ListingYamlKeys = exports.CIConfigYamlFile = void 0;
 exports.CIConfigYamlFile = {
-    name: 'ci.config.yaml'
+    name: '.ci.config.yaml'
 };
 exports.ListingYamlKeys = {
     dir: 'dir',

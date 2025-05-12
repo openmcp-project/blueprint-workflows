@@ -1,5 +1,5 @@
 export declare const CIConfigYamlFile: {
-    readonly name: "ci.config.yaml";
+    readonly name: ".ci.config.yaml";
 };
 export declare const ListingYamlKeys: {
     readonly dir: "dir";
