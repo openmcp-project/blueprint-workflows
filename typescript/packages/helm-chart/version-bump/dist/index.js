@@ -69111,12 +69111,23 @@ async function run() {
         else {
             result = await utilsHelmChart.exec('git diff --name-only "origin/' + BASE_BRANCH_NAME + '..origin/' + BRANCH_NAME + '"', [], { cwd: GITHUB_WORKSPACE });
         }
+        /**
+        manifests/test/helm/charts/test-custom-chart/test-custom-chart/templates/deployment.yaml
+    manifests/test/helm/charts/test-custom-chart/test-custom-chart/templates/tests/test-connection.yaml
+    test/helm/charts/test-custom-chart/.ci.config.yaml
+    test/helm/charts/test-custom-chart/Chart.yaml
+    test/helm/charts/test-custom-chart/README.md
+    typescript/packages/shared/src/constants.ts
+    typescript/packages/shared/src/utils.ts
+         */
         const folders = result.stdout.split('\n');
+        // remove .ci.config.yaml from folders?
         console.log('Looking for dirs with modified files');
         let foundHelmChartFolderModified = {};
-        folders.forEach(function (value) {
-            if (dist_1.utils.isFileFoundInPath(dist_1.constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)) !== false) {
-                let dirName = String(dist_1.utils.isFileFoundInPath(dist_1.constants.HelmChartFiles.Chartyaml, path.parse(value), path.parse(GITHUB_WORKSPACE)));
+        folders.forEach(function (folder) {
+            // Check if file constants.HelmChartFiles.Chartyaml is in folders.each(folder) a Helm Chart
+            if (dist_1.utils.isFileFoundInPath(dist_1.constants.HelmChartFiles.Chartyaml, path.parse(folder), path.parse(GITHUB_WORKSPACE)) !== false) {
+                let dirName = String(dist_1.utils.isFileFoundInPath(dist_1.constants.HelmChartFiles.Chartyaml, path.parse(folder), path.parse(GITHUB_WORKSPACE)));
                 let yamlKey = dist_1.utils.findYamlKeyByDir(helmChartListingFileContent, dirName);
                 if (yamlKey === null) {
                     throw new Error('Unable to find key in ' + dist_1.constants.HelmChartFiles.listingFile + ' for dir ' + dirName);
