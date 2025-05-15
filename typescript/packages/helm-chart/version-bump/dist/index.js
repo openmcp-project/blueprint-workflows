@@ -58712,14 +58712,6 @@ module.exports = __nccwpck_require__(9278);
 
 /***/ }),
 
-/***/ 4573:
-/***/ ((module) => {
-
-"use strict";
-module.exports = __nccwpck_require__(4573);
-
-/***/ }),
-
 /***/ 7598:
 /***/ ((module) => {
 
@@ -58733,14 +58725,6 @@ module.exports = __nccwpck_require__(7598);
 
 "use strict";
 module.exports = __nccwpck_require__(8474);
-
-/***/ }),
-
-/***/ 1708:
-/***/ ((module) => {
-
-"use strict";
-module.exports = __nccwpck_require__(1708);
 
 /***/ }),
 
@@ -58781,6 +58765,14 @@ module.exports = __nccwpck_require__(6928);
 
 "use strict";
 module.exports = __nccwpck_require__(2987);
+
+/***/ }),
+
+/***/ 932:
+/***/ ((module) => {
+
+"use strict";
+module.exports = __nccwpck_require__(932);
 
 /***/ }),
 
@@ -60863,7 +60855,7 @@ exports.composeScalar = composeScalar;
 "use strict";
 
 
-var node_process = __nccwpck_require2_(1708);
+var node_process = __nccwpck_require2_(932);
 var directives = __nccwpck_require2_(1342);
 var Document = __nccwpck_require2_(3021);
 var errors = __nccwpck_require2_(1464);
@@ -62056,8 +62048,7 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (token.source.endsWith(':'))
                     onError(token.offset + token.source.length - 1, 'BAD_ALIAS', 'Anchor ending in : is ambiguous', true);
                 anchor = token;
-                if (start === null)
-                    start = token.offset;
+                start ?? (start = token.offset);
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -62066,8 +62057,7 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (tag)
                     onError(token, 'MULTIPLE_TAGS', 'A node can have at most one tag');
                 tag = token;
-                if (start === null)
-                    start = token.offset;
+                start ?? (start = token.offset);
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -62186,8 +62176,7 @@ exports.containsNewline = containsNewline;
 
 function emptyScalarPosition(offset, before, pos) {
     if (before) {
-        if (pos === null)
-            pos = before.length;
+        pos ?? (pos = before.length);
         for (let i = pos - 1; i >= 0; --i) {
             let st = before[i];
             switch (st.type) {
@@ -62655,8 +62644,7 @@ function createNodeAnchors(doc, prefix) {
     return {
         onAnchor: (source) => {
             aliasObjects.push(source);
-            if (!prevAnchors)
-                prevAnchors = anchorNames(doc);
+            prevAnchors ?? (prevAnchors = anchorNames(doc));
             const anchor = findNewAnchor(prefix, prevAnchors);
             prevAnchors.add(anchor);
             return anchor;
@@ -62804,8 +62792,7 @@ function createNode(value, tagName, ctx) {
     if (aliasDuplicateObjects && value && typeof value === 'object') {
         ref = sourceObjects.get(value);
         if (ref) {
-            if (!ref.anchor)
-                ref.anchor = onAnchor(value);
+            ref.anchor ?? (ref.anchor = onAnchor(value));
             return new Alias.Alias(ref.anchor);
         }
         else {
@@ -63177,7 +63164,7 @@ exports.visitAsync = visit.visitAsync;
 "use strict";
 
 
-var node_process = __nccwpck_require2_(1708);
+var node_process = __nccwpck_require2_(932);
 
 function debug(logLevel, ...messages) {
     if (logLevel === 'debug')
@@ -63224,23 +63211,36 @@ class Alias extends Node.NodeBase {
      * Resolve the value of this alias within `doc`, finding the last
      * instance of the `source` anchor before this node.
      */
-    resolve(doc) {
+    resolve(doc, ctx) {
+        let nodes;
+        if (ctx?.aliasResolveCache) {
+            nodes = ctx.aliasResolveCache;
+        }
+        else {
+            nodes = [];
+            visit.visit(doc, {
+                Node: (_key, node) => {
+                    if (identity.isAlias(node) || identity.hasAnchor(node))
+                        nodes.push(node);
+                }
+            });
+            if (ctx)
+                ctx.aliasResolveCache = nodes;
+        }
         let found = undefined;
-        visit.visit(doc, {
-            Node: (_key, node) => {
-                if (node === this)
-                    return visit.visit.BREAK;
-                if (node.anchor === this.source)
-                    found = node;
-            }
-        });
+        for (const node of nodes) {
+            if (node === this)
+                break;
+            if (node.anchor === this.source)
+                found = node;
+        }
         return found;
     }
     toJSON(_arg, ctx) {
         if (!ctx)
             return { source: this.source };
         const { anchors, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc);
+        const source = this.resolve(doc, ctx);
         if (!source) {
             const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
             throw new ReferenceError(msg);
@@ -63921,6 +63921,7 @@ function addPairToJSMap(ctx, map, { key, value }) {
 function stringifyKey(key, jsKey, ctx) {
     if (jsKey === null)
         return '';
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     if (typeof jsKey !== 'object')
         return String(jsKey);
     if (identity.isNode(key) && ctx?.doc) {
@@ -65362,7 +65363,7 @@ exports.LineCounter = LineCounter;
 "use strict";
 
 
-var node_process = __nccwpck_require2_(1708);
+var node_process = __nccwpck_require2_(932);
 var cst = __nccwpck_require2_(3461);
 var lexer = __nccwpck_require2_(361);
 
@@ -66953,7 +66954,7 @@ exports.getTags = getTags;
 "use strict";
 
 
-var node_buffer = __nccwpck_require2_(4573);
+var node_buffer = __nccwpck_require2_(181);
 var Scalar = __nccwpck_require2_(3301);
 var stringifyString = __nccwpck_require2_(3069);
 
@@ -67006,8 +67007,7 @@ const binary = {
         else {
             throw new Error('This environment does not support writing binary tags; either Buffer or btoa is required');
         }
-        if (!type)
-            type = Scalar.Scalar.BLOCK_LITERAL;
+        type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
             const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
             const n = Math.ceil(str.length / lineWidth);
@@ -67957,7 +67957,7 @@ function getTagObject(tags, item) {
         tagObj = tags.find(t => t.nodeClass && obj instanceof t.nodeClass);
     }
     if (!tagObj) {
-        const name = obj?.constructor?.name ?? typeof obj;
+        const name = obj?.constructor?.name ?? (obj === null ? 'null' : typeof obj);
         throw new Error(`Tag not resolved for ${name} value`);
     }
     return tagObj;
@@ -67972,7 +67972,7 @@ function stringifyProps(node, tagObj, { anchors: anchors$1, doc }) {
         anchors$1.add(anchor);
         props.push(`&${anchor}`);
     }
-    const tag = node.tag ? node.tag : tagObj.default ? null : tagObj.tag;
+    const tag = node.tag ?? (tagObj.default ? null : tagObj.tag);
     if (tag)
         props.push(doc.directives.tagString(tag));
     return props.join(' ');
@@ -67998,8 +67998,7 @@ function stringify(item, ctx, onComment, onChompKeep) {
     const node = identity.isNode(item)
         ? item
         : ctx.doc.createNode(item, { onTagObj: o => (tagObj = o) });
-    if (!tagObj)
-        tagObj = getTagObject(ctx.doc.schema.tags, node);
+    tagObj ?? (tagObj = getTagObject(ctx.doc.schema.tags, node));
     const props = stringifyProps(node, tagObj, ctx);
     if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
@@ -68756,10 +68755,9 @@ function plainString(item, ctx, onComment, onChompKeep) {
         (inFlow && /[[\]{},]/.test(value))) {
         return quotedString(value, ctx);
     }
-    if (!value ||
-        /^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
+    if (/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
         // not allowed:
-        // - empty string, '-' or '?'
+        // - '-' or '?'
         // - start with an indicator character (except [?:-]) or /[?-] /
         // - '\n ', ': ' or ' \n' anywhere
         // - '#' not preceded by a non-space char
@@ -69477,14 +69475,6 @@ module.exports = require("net");
 
 /***/ }),
 
-/***/ 4573:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("node:buffer");
-
-/***/ }),
-
 /***/ 7598:
 /***/ ((module) => {
 
@@ -69498,14 +69488,6 @@ module.exports = require("node:crypto");
 
 "use strict";
 module.exports = require("node:events");
-
-/***/ }),
-
-/***/ 1708:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("node:process");
 
 /***/ }),
 
@@ -69546,6 +69528,14 @@ module.exports = require("path");
 
 "use strict";
 module.exports = require("perf_hooks");
+
+/***/ }),
+
+/***/ 932:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("process");
 
 /***/ }),
 
@@ -71628,7 +71618,7 @@ exports.composeScalar = composeScalar;
 "use strict";
 
 
-var node_process = __nccwpck_require__(1708);
+var node_process = __nccwpck_require__(932);
 var directives = __nccwpck_require__(1342);
 var Document = __nccwpck_require__(3021);
 var errors = __nccwpck_require__(1464);
@@ -72821,8 +72811,7 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (token.source.endsWith(':'))
                     onError(token.offset + token.source.length - 1, 'BAD_ALIAS', 'Anchor ending in : is ambiguous', true);
                 anchor = token;
-                if (start === null)
-                    start = token.offset;
+                start ?? (start = token.offset);
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -72831,8 +72820,7 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (tag)
                     onError(token, 'MULTIPLE_TAGS', 'A node can have at most one tag');
                 tag = token;
-                if (start === null)
-                    start = token.offset;
+                start ?? (start = token.offset);
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -72951,8 +72939,7 @@ exports.containsNewline = containsNewline;
 
 function emptyScalarPosition(offset, before, pos) {
     if (before) {
-        if (pos === null)
-            pos = before.length;
+        pos ?? (pos = before.length);
         for (let i = pos - 1; i >= 0; --i) {
             let st = before[i];
             switch (st.type) {
@@ -73420,8 +73407,7 @@ function createNodeAnchors(doc, prefix) {
     return {
         onAnchor: (source) => {
             aliasObjects.push(source);
-            if (!prevAnchors)
-                prevAnchors = anchorNames(doc);
+            prevAnchors ?? (prevAnchors = anchorNames(doc));
             const anchor = findNewAnchor(prefix, prevAnchors);
             prevAnchors.add(anchor);
             return anchor;
@@ -73569,8 +73555,7 @@ function createNode(value, tagName, ctx) {
     if (aliasDuplicateObjects && value && typeof value === 'object') {
         ref = sourceObjects.get(value);
         if (ref) {
-            if (!ref.anchor)
-                ref.anchor = onAnchor(value);
+            ref.anchor ?? (ref.anchor = onAnchor(value));
             return new Alias.Alias(ref.anchor);
         }
         else {
@@ -73942,7 +73927,7 @@ exports.visitAsync = visit.visitAsync;
 "use strict";
 
 
-var node_process = __nccwpck_require__(1708);
+var node_process = __nccwpck_require__(932);
 
 function debug(logLevel, ...messages) {
     if (logLevel === 'debug')
@@ -73989,23 +73974,36 @@ class Alias extends Node.NodeBase {
      * Resolve the value of this alias within `doc`, finding the last
      * instance of the `source` anchor before this node.
      */
-    resolve(doc) {
+    resolve(doc, ctx) {
+        let nodes;
+        if (ctx?.aliasResolveCache) {
+            nodes = ctx.aliasResolveCache;
+        }
+        else {
+            nodes = [];
+            visit.visit(doc, {
+                Node: (_key, node) => {
+                    if (identity.isAlias(node) || identity.hasAnchor(node))
+                        nodes.push(node);
+                }
+            });
+            if (ctx)
+                ctx.aliasResolveCache = nodes;
+        }
         let found = undefined;
-        visit.visit(doc, {
-            Node: (_key, node) => {
-                if (node === this)
-                    return visit.visit.BREAK;
-                if (node.anchor === this.source)
-                    found = node;
-            }
-        });
+        for (const node of nodes) {
+            if (node === this)
+                break;
+            if (node.anchor === this.source)
+                found = node;
+        }
         return found;
     }
     toJSON(_arg, ctx) {
         if (!ctx)
             return { source: this.source };
         const { anchors, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc);
+        const source = this.resolve(doc, ctx);
         if (!source) {
             const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
             throw new ReferenceError(msg);
@@ -74686,6 +74684,7 @@ function addPairToJSMap(ctx, map, { key, value }) {
 function stringifyKey(key, jsKey, ctx) {
     if (jsKey === null)
         return '';
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     if (typeof jsKey !== 'object')
         return String(jsKey);
     if (identity.isNode(key) && ctx?.doc) {
@@ -76127,7 +76126,7 @@ exports.LineCounter = LineCounter;
 "use strict";
 
 
-var node_process = __nccwpck_require__(1708);
+var node_process = __nccwpck_require__(932);
 var cst = __nccwpck_require__(3461);
 var lexer = __nccwpck_require__(361);
 
@@ -77718,7 +77717,7 @@ exports.getTags = getTags;
 "use strict";
 
 
-var node_buffer = __nccwpck_require__(4573);
+var node_buffer = __nccwpck_require__(181);
 var Scalar = __nccwpck_require__(3301);
 var stringifyString = __nccwpck_require__(3069);
 
@@ -77771,8 +77770,7 @@ const binary = {
         else {
             throw new Error('This environment does not support writing binary tags; either Buffer or btoa is required');
         }
-        if (!type)
-            type = Scalar.Scalar.BLOCK_LITERAL;
+        type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
             const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
             const n = Math.ceil(str.length / lineWidth);
@@ -78722,7 +78720,7 @@ function getTagObject(tags, item) {
         tagObj = tags.find(t => t.nodeClass && obj instanceof t.nodeClass);
     }
     if (!tagObj) {
-        const name = obj?.constructor?.name ?? typeof obj;
+        const name = obj?.constructor?.name ?? (obj === null ? 'null' : typeof obj);
         throw new Error(`Tag not resolved for ${name} value`);
     }
     return tagObj;
@@ -78737,7 +78735,7 @@ function stringifyProps(node, tagObj, { anchors: anchors$1, doc }) {
         anchors$1.add(anchor);
         props.push(`&${anchor}`);
     }
-    const tag = node.tag ? node.tag : tagObj.default ? null : tagObj.tag;
+    const tag = node.tag ?? (tagObj.default ? null : tagObj.tag);
     if (tag)
         props.push(doc.directives.tagString(tag));
     return props.join(' ');
@@ -78763,8 +78761,7 @@ function stringify(item, ctx, onComment, onChompKeep) {
     const node = identity.isNode(item)
         ? item
         : ctx.doc.createNode(item, { onTagObj: o => (tagObj = o) });
-    if (!tagObj)
-        tagObj = getTagObject(ctx.doc.schema.tags, node);
+    tagObj ?? (tagObj = getTagObject(ctx.doc.schema.tags, node));
     const props = stringifyProps(node, tagObj, ctx);
     if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
@@ -79521,10 +79518,9 @@ function plainString(item, ctx, onComment, onChompKeep) {
         (inFlow && /[[\]{},]/.test(value))) {
         return quotedString(value, ctx);
     }
-    if (!value ||
-        /^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
+    if (/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
         // not allowed:
-        // - empty string, '-' or '?'
+        // - '-' or '?'
         // - start with an indicator character (except [?:-]) or /[?-] /
         // - '\n ', ': ' or ' \n' anywhere
         // - '#' not preceded by a non-space char
