@@ -53,7 +53,7 @@ export async function run(): Promise<void> {
         let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions))
         
-        if(helmTemplatingOptions && helmTemplatingOption["default-manifest-templating"] === true) {
+        if(helmTemplatingOptions && helmTemplatingOptions["default-manifest-templating"] === true) {
           core.info('Default manifest templating enabled')
         }
         if(helmTemplatingOptions && Array.isArray(helmTemplatingOptions["additional-manifest-templating"])) {
