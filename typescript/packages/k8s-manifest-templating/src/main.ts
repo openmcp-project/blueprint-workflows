@@ -53,10 +53,10 @@ export async function run(): Promise<void> {
         let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions))
         
-        if(utils.unrapYamlbyKey(helmTemplatingOptions,"default-manifest-templating") === true) {
+        if(utils.unrapYamlbyKey(helmTemplatingOptions,"default-manifest-templating", true)) {
           core.info('Default manifest templating enabled')
         }
-        if(utils.unrapYamlbyKey(helmTemplatingOptions, "additional-manifest-templating")) {
+        if(utils.unrapYamlbyKey(helmTemplatingOptions, "additional-manifest-templating", false)) {
           core.info('Additional manifest templating enabled')
           // helmTemplatingOptions["additional-manifest-templating"].forEach((item: any) => {
           //   core.info('Prefix manifest folder name: ' + item['prefix-manifest-folder-name'])
