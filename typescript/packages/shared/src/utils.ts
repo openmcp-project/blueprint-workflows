@@ -350,11 +350,7 @@ export class HelmChart {
    * @param featureName - The name of the feature to retrieve within the function section.
    * @returns The feature object if found, or false if not present.
    */
-  public readPipelineFeature(
-    dir: path.FormatInputPathObject,
-    functionName: string,
-    featureName: string
-  ): yaml.Document | false {
+  public readPipelineFeature(dir: path.FormatInputPathObject, functionName: string, featureName: string): yaml.Document | false {
     const configPath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
     if (!fs.existsSync(configPath)) {
       return false

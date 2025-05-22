@@ -67,7 +67,7 @@ export async function run(): Promise<void> {
         }
         helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
-        let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, "helm-charts")
+        let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         console.log('helmTemplatingOptions', helmTemplatingOptions)
 
         await utilsHelmChart.template(dir, '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml, helmOptions)
