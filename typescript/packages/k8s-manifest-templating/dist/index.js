@@ -66577,7 +66577,7 @@ async function run() {
                 }
                 helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
                 let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
-                console.log('helmTemplatingOptions', helmTemplatingOptions);
+                console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions));
                 await utilsHelmChart.template(dir, '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml, helmOptions);
                 tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlRelativePath]);
             }
