@@ -66564,6 +66564,16 @@ async function run() {
             let listingYamlRelativePath = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.relativePath);
             let dir = path.parse(listingYamlDir);
             if (shared_1.utils.isFunctionEnabled(dir, shared_1.constants.Functionality.k8sManifestTemplating, true)) {
+                const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
+                console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions));
+                // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
+                let helmTemplatingOptionsObj = helmTemplatingOptions;
+                if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
+                    helmTemplatingOptionsObj = helmTemplatingOptions.toJSON();
+                }
+                if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === true) {
+                    core.info('Default manifest templating enabled');
+                }
                 let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlRelativePath);
                 fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
                 core.debug('Created folder: ' + path.format(manifestTargetFolder));
@@ -66576,8 +66586,6 @@ async function run() {
                     helmOptions.push('--skip-crds');
                 }
                 helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
-                let helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
-                console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions));
                 await utilsHelmChart.template(dir, '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml, helmOptions);
                 tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlRelativePath]);
             }

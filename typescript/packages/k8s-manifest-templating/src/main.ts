@@ -59,11 +59,7 @@ export async function run(): Promise<void> {
           helmTemplatingOptionsObj = helmTemplatingOptions.toJSON()
         }
 
-        if (
-          helmTemplatingOptionsObj &&
-          typeof helmTemplatingOptionsObj === 'object' &&
-          helmTemplatingOptionsObj['default-manifest-templating'] === true
-        ) {
+        if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === true) {
           core.info('Default manifest templating enabled')
         }
 
@@ -84,7 +80,6 @@ export async function run(): Promise<void> {
         }
 
         helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
-
 
         await utilsHelmChart.template(dir, '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml, helmOptions)
         tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlRelativePath])
