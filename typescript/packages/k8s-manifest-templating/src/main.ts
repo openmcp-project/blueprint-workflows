@@ -87,7 +87,9 @@ export async function run(): Promise<void> {
           helmTemplatingOptionsObj = helmTemplatingOptions.toJSON()
         }
 
-        if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === true) {
+        if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === false) {
+          core.info('Default manifest templating disabled')
+        } else {
           core.info('Default manifest templating enabled')
           await runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
         }
