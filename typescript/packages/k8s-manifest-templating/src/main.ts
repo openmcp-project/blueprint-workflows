@@ -64,16 +64,8 @@ export async function run(): Promise<void> {
         }
 
         // Check for additional-manifest-templating
-        if (
-          helmTemplatingOptionsObj &&
-          typeof helmTemplatingOptionsObj === 'object' &&
-          Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])
-        ) {
-          core.info(
-            `Additional manifest templating detected: ${JSON.stringify(
-              helmTemplatingOptionsObj['additional-manifest-templating']
-            )}`
-          )
+        if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
+          core.info(`Additional manifest templating detected: ${JSON.stringify(helmTemplatingOptionsObj['additional-manifest-templating'])}`)
           // Example: iterate over each additional manifest templating entry
           for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
             const prefix = additional['prefix-manifest-folder-name']
