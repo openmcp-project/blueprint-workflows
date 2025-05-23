@@ -66591,7 +66591,10 @@ async function run() {
                 if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
                     helmTemplatingOptionsObj = helmTemplatingOptions.toJSON();
                 }
-                if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === true) {
+                if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === false) {
+                    core.info('Default manifest templating disabled');
+                }
+                else {
                     core.info('Default manifest templating enabled');
                     await runHelmTemplating('', [shared_1.constants.HelmChartFiles.valuesYaml]);
                 }
