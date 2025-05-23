@@ -53,10 +53,11 @@ export async function run(): Promise<void> {
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions))
 
-        // Convert to plain object if it's a YAML Document
-        const helmTemplatingOptionsObj = typeof helmTemplatingOptions?.toJSON === 'function'
-          ? helmTemplatingOptions.toJSON()
-          : helmTemplatingOptions;
+        // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
+        let helmTemplatingOptionsObj: any = helmTemplatingOptions
+        if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
+          helmTemplatingOptionsObj = helmTemplatingOptions.toJSON()
+        }
 
         if (
           helmTemplatingOptionsObj &&
