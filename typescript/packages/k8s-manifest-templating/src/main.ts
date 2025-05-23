@@ -52,20 +52,19 @@ export async function run(): Promise<void> {
       if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions))
-        
-        if(helmTemplatingOptions && typeof helmTemplatingOptions === 'object' && helmTemplatingOptions.default-manifest-templating === true) {
+
+        // Convert to plain object if it's a YAML Document
+        const helmTemplatingOptionsObj = typeof helmTemplatingOptions?.toJSON === 'function'
+          ? helmTemplatingOptions.toJSON()
+          : helmTemplatingOptions;
+
+        if (
+          helmTemplatingOptionsObj &&
+          typeof helmTemplatingOptionsObj === 'object' &&
+          helmTemplatingOptionsObj['default-manifest-templating'] === true
+        ) {
           core.info('Default manifest templating enabled')
         }
-        // if(utils.unrapYamlbyKey(helmTemplatingOptions, "additional-manifest-templating", false)) {
-        //   core.info('Additional manifest templating enabled')
-        //   helmTemplatingOptions["additional-manifest-templating"].forEach((item: any) => {
-        //     core.info('Prefix manifest folder name: ' + item['prefix-manifest-folder-name'])
-        //     core.info('Value files: ' + item['value-files'])
-        //     item['value-files'].forEach((valueFile: string) => {
-        //       core.info('Value file: ' + valueFile)
-        //     })
-        //   })
-        // }
 
         let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlRelativePath)
 
