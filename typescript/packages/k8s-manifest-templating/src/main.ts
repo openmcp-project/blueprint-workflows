@@ -69,11 +69,11 @@ export async function run(): Promise<void> {
           if (utils.unrapYamlbyKey(options, '--skip-crds', false)) {
             helmOptions.push('--skip-crds')
           }
-          
+
           helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
-          
+
           let valueArgs: string = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml
-          valueFiles.forEach((valueFile) => {
+          valueFiles.forEach(valueFile => {
             valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
           })
 
@@ -93,23 +93,15 @@ export async function run(): Promise<void> {
         }
 
         // Check for additional-manifest-templating
-        if (
-          helmTemplatingOptionsObj &&
-          typeof helmTemplatingOptionsObj === 'object' &&
-          Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])
-        ) {
-          core.info(
-            `Additional manifest templating detected: ${JSON.stringify(
-              helmTemplatingOptionsObj['additional-manifest-templating']
-            )}`
-          )
+        if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
+          core.info(`Additional manifest templating detected: ${JSON.stringify(helmTemplatingOptionsObj['additional-manifest-templating'])}`)
           for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
             const prefix = additional['prefix-manifest-folder-name']
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
-            await runHelmTemplating(prefix+".", valueFiles)
+            await runHelmTemplating(prefix + '.', valueFiles)
           }
-        }        
+        }
       } else {
         tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-'])
       }
