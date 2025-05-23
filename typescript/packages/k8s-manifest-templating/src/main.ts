@@ -72,13 +72,13 @@ export async function run(): Promise<void> {
           
           helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
           
-          let valueArgs: string = ''
+          let valueArgs: string = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml
           valueFiles.forEach((valueFile) => {
-            valueArgs += '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml+ ' '
+            valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
           })
 
-          await utilsHelmChart.template(dir, valueArgs, helmOptions)
-          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlRelativePath])
+          utilsHelmChart.template(dir, valueArgs, helmOptions)
+          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + prefix + listingYamlRelativePath])
         }
 
         // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
@@ -89,7 +89,7 @@ export async function run(): Promise<void> {
 
         if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === true) {
           core.info('Default manifest templating enabled')
-          runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
+          await runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
         }
 
         // Check for additional-manifest-templating
@@ -107,7 +107,7 @@ export async function run(): Promise<void> {
             const prefix = additional['prefix-manifest-folder-name']
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
-            runHelmTemplating(prefix+".", valueFiles)
+            await runHelmTemplating(prefix+".", valueFiles)
           }
         }        
       } else {
