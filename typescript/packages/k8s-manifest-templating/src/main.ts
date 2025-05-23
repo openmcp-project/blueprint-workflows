@@ -91,7 +91,7 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          await runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
+          runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
         }
 
         // Check for additional-manifest-templating
@@ -101,7 +101,7 @@ export async function run(): Promise<void> {
             const prefix = additional['prefix-manifest-folder-name']
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
-            await runHelmTemplating(prefix + '.', valueFiles)
+            runHelmTemplating(prefix + '.', valueFiles)
           }
         }
       } else {
