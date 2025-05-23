@@ -133,7 +133,7 @@ jobs:
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@main"
       
       - id: k8s-manifest-templating
-        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@feat/multi-values"
       
       - name: Get commit SHA
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
