@@ -63,6 +63,26 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating enabled')
         }
 
+        // Check for additional-manifest-templating
+        if (
+          helmTemplatingOptionsObj &&
+          typeof helmTemplatingOptionsObj === 'object' &&
+          Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])
+        ) {
+          core.info(
+            `Additional manifest templating detected: ${JSON.stringify(
+              helmTemplatingOptionsObj['additional-manifest-templating']
+            )}`
+          )
+          // Example: iterate over each additional manifest templating entry
+          for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
+            const prefix = additional['prefix-manifest-folder-name']
+            const valueFiles = additional['value-files']
+            core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
+            // Here you can add your logic to handle each additional manifest templating entry
+          }
+        }
+
         let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlRelativePath)
 
         fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
