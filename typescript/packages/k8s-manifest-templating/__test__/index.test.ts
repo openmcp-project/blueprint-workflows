@@ -108,7 +108,7 @@ describe('main.run manifest templating scenarios', () => {
     // Simulate a single chart in the listing
     mockUtilsHelmChart.getListingFileContent.mockReturnValue('listing-content')
     yaml.parse.mockReturnValue({ chart1: options })
-    yaml.Document.mockImplementation(function (content: any) {
+    yaml.Document.mockImplementation(function (this: any, content: any) {
       this.content = content
       this.toJSON = () => content
     })
