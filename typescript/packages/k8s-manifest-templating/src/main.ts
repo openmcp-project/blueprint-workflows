@@ -43,17 +43,22 @@ export async function run(): Promise<void> {
     core.summary.addHeading('K8s Manifest Templating Results').addRaw(summaryRawContent)
 
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
+      core.debug('Processing Helm Chart UID:' + item)
       let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
       let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
+      core.debug('Listing YAML Directory:' + listingYamlDir)
       let listingYamlName = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.name)
+      core.debug('Listing YAML Name:' + listingYamlName)
       let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
+      core.debug('Listing YAML Relative Path:' + listingYamlRelativePath)
       let dir: path.ParsedPath = path.parse(listingYamlDir)
 
       if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
-        console.log('helmTemplatingOptions', JSON.stringify(helmTemplatingOptions))
+        core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
         let runHelmTemplating = function (prefix: string, valueFiles: string[]) {
+          console.log('runHelmTemplating called with prefix:', prefix, 'and valueFiles:', valueFiles)
           let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + prefix + listingYamlRelativePath)
 
           fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
@@ -97,12 +102,19 @@ export async function run(): Promise<void> {
         // Check for additional-manifest-templating
         if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
           core.info(`Additional manifest templating detected: ${JSON.stringify(helmTemplatingOptionsObj['additional-manifest-templating'])}`)
+          let addCounter = 0
           for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
-            const prefix = additional['prefix-manifest-folder-name']
+            addCounter++
+            let prefix = additional['prefix-manifest-folder-name']
+            if( !prefix || prefix === '') {
+              prefix = "ENV" + addCounter++
+            }
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
             runHelmTemplating(prefix + '.', valueFiles)
           }
+        } else {
+          core.info('Additional manifest templating disabled')
         }
       } else {
         tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-'])

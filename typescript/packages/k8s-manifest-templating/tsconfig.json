@@ -14,13 +14,17 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
+  "typeAcquisition": { "include": ["jest"] },
+  "include": [
+    "src",
+    "test"
+  ],
   "exclude": [
     "listing/coverage",
     "listing/dist",
     "./node_modules",
     "listing/__tests__",
-    "./coverage",
-    "./__test__"
+    "./coverage"
   ],
   "references": [
     {
