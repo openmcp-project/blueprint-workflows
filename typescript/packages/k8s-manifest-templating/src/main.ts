@@ -61,8 +61,10 @@ export async function run(): Promise<void> {
         core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
         let runHelmTemplating = function (prefix: string, valueFiles: string[]) {
-          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:'+ valueFiles)
-          let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split("/").pop())
+          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
+          let manifestTargetFolder: path.FormatInputPathObject = path.parse(
+            GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
+          )
           core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
 
           fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
@@ -88,7 +90,7 @@ export async function run(): Promise<void> {
 
           core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
           utilsHelmChart.template(dir, valueArgs, helmOptions)
-          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split("/").pop()])
+          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
         }
 
         // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
