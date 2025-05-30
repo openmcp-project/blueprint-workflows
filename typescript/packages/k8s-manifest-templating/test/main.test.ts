@@ -111,14 +111,6 @@ describe('main.run manifest templating scenarios', () => {
   }
 
   it('handles default-manifest-templating undefined (should run default)', async () => {
-
-//     setupHelmChartListingDoc(
-// `default-manifest-templating: true
-// additional-manifest-templating:
-//   - prefix-manifest-folder-name: "dev"
-//     value-files:
-//       - "values.network.yaml"
-//       - "values.dev.yaml"`)
     setupHelmChartListingDoc("")
 
     await main.run()
@@ -132,7 +124,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
       [
         '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
       ]
@@ -157,7 +149,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
       [
         '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
       ]
@@ -189,7 +181,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
       [
         '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
       ]
@@ -208,7 +200,7 @@ additional-manifest-templating:
 
     await main.run()
     // Should still call template, but prefix will be assigned an incrementing value
-    console.log(helmChartInstanceMock.template.mock.calls)
+    //console.log(helmChartInstanceMock.template.mock.calls)
     expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
       {
         dir: '/home/runner/work/blueprint-workflows/blueprint-workflows/test/helm/charts/test-custom-chart',
@@ -219,7 +211,7 @@ additional-manifest-templating:
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
       [
-        '--output-dir "testenv/manifests/dev.test/helm/charts/test-custom-chart"'
+        '--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"'
       ]
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"prefix-manifest-folder-name":"dev","value-files":["values.network.yaml","values.dev.yaml"]}]')
@@ -257,7 +249,7 @@ additional-manifest-templating:
 
     await main.run()
     // Should still call template, but prefix will be assigned an incrementing value
-    console.log(helmChartInstanceMock.template.mock.calls)
+    //console.log(helmChartInstanceMock.template.mock.calls)
     expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
       {
         dir: '/home/runner/work/blueprint-workflows/blueprint-workflows/test/helm/charts/test-custom-chart',
@@ -268,57 +260,8 @@ additional-manifest-templating:
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
       [
-        '--output-dir "testenv/manifests/ENV1.test/helm/charts/test-custom-chart"'
+        '--output-dir "testenv/manifests/test/helm/charts/ENV1.test-custom-chart"'
       ]
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"value-files":["values.network.yaml","values.dev.yaml"]}]')
   })
-
-  // it('handles prefix-manifest-folder-name not a string', async () => {
-//     setupHelmChartListingDoc(
-// `default-manifest-templating: true
-// additional-manifest-templating:
-//   - prefix-manifest-folder-name: "dev"
-//     value-files:
-//       - "values.network.yaml"
-//       - "values.dev.yaml"`)
-  //   await main.run()
-  //   expect(mockUtilsHelmChart.template).toHaveBeenCalled()
-  // })
-
-  // it('handles value-files does not exist or is empty', async () => {
-//     setupHelmChartListingDoc(
-// `default-manifest-templating: true
-// additional-manifest-templating:
-//   - prefix-manifest-folder-name: "dev"
-//     value-files:
-//       - "values.network.yaml"
-//       - "values.dev.yaml"`)
-  //   await main.run()
-  //   expect(mockUtilsHelmChart.template).toHaveBeenCalled()
-  // })
-
-  // it('handles value-files exists but is not array', async () => {
-//     setupHelmChartListingDoc(
-// `default-manifest-templating: true
-// additional-manifest-templating:
-//   - prefix-manifest-folder-name: "dev"
-//     value-files:
-//       - "values.network.yaml"
-//       - "values.dev.yaml"`)
-  //   await main.run()
-  //   expect(mockUtilsHelmChart.template).toHaveBeenCalled()
-  // })
-
-  // it('handles value-files contains file names that do not exist', async () => {
-//     setupHelmChartListingDoc(
-// `default-manifest-templating: true
-// additional-manifest-templating:
-//   - prefix-manifest-folder-name: "dev"
-//     value-files:
-//       - "values.network.yaml"
-//       - "values.dev.yaml"`)
-  //   await main.run()
-  //   expect(mockUtilsHelmChart.template).toHaveBeenCalled()
-  // })
-})

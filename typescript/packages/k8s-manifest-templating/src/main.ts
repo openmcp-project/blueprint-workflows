@@ -43,23 +43,27 @@ export async function run(): Promise<void> {
     core.summary.addHeading('K8s Manifest Templating Results').addRaw(summaryRawContent)
 
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
-      core.debug('Processing Helm Chart UID:' + item)
+      core.info('Processing Helm Chart UID:' + item)
       let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
       let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
       core.debug('Listing YAML Directory:' + listingYamlDir)
       let listingYamlName = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.name)
       core.debug('Listing YAML Name:' + listingYamlName)
+      let listingYamlManifestPath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.manifestPath)
+      core.debug('Listing YAML Relative Path:' + listingYamlManifestPath)
       let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
       core.debug('Listing YAML Relative Path:' + listingYamlRelativePath)
       let dir: path.ParsedPath = path.parse(listingYamlDir)
 
       if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
+        core.info('K8s Manifest Templating enabled for Helm Chart UID: ' + item)
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
         let runHelmTemplating = function (prefix: string, valueFiles: string[]) {
-          console.log('runHelmTemplating called with prefix:', prefix, 'and valueFiles:', valueFiles)
-          let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + prefix + listingYamlRelativePath)
+          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:'+ valueFiles)
+          let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlName)
+          core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
 
           fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
           core.debug('Created folder: ' + path.format(manifestTargetFolder))
@@ -82,8 +86,9 @@ export async function run(): Promise<void> {
             valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
           })
 
+          core.debug("Calling utilsHelmChart.template with args: " + valueArgs + " and helmOptions: " + helmOptions)
           utilsHelmChart.template(dir, valueArgs, helmOptions)
-          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + prefix + listingYamlRelativePath])
+          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlName])
         }
 
         // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
@@ -96,7 +101,7 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          runHelmTemplating('', [constants.HelmChartFiles.valuesYaml])
+          runHelmTemplating('', [])
         }
 
         // Check for additional-manifest-templating
@@ -117,6 +122,7 @@ export async function run(): Promise<void> {
           core.info('Additional manifest templating disabled')
         }
       } else {
+        core.info('K8s Manifest Templating disabled for Helm Chart UID: ' + item)
         tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-'])
       }
     }
