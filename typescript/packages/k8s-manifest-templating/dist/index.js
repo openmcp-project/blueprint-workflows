@@ -66573,7 +66573,7 @@ async function run() {
                 core.info('K8s Manifest Templating enabled for Helm Chart UID: ' + item);
                 const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
                 core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions));
-                let runHelmTemplating = function (prefix, valueFiles) {
+                let runHelmTemplating = async function (prefix, valueFiles) {
                     core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
                     let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
                     core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
@@ -66606,7 +66606,7 @@ async function run() {
                 }
                 else {
                     core.info('Default manifest templating enabled');
-                    runHelmTemplating('', []);
+                    await runHelmTemplating('', []);
                 }
                 // Check for additional-manifest-templating
                 if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
@@ -66620,7 +66620,7 @@ async function run() {
                         }
                         const valueFiles = additional['value-files'];
                         core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`);
-                        runHelmTemplating(prefix + '.', valueFiles);
+                        await runHelmTemplating(prefix + '.', valueFiles);
                     }
                 }
                 else {
