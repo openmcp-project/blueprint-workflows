@@ -60,11 +60,9 @@ export async function run(): Promise<void> {
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
-        let runHelmTemplating = function (prefix: string, valueFiles: string[]) {
-          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
-          let manifestTargetFolder: path.FormatInputPathObject = path.parse(
-            GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
-          )
+        let runHelmTemplating = async function (prefix: string, valueFiles: string[]) {
+          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:'+ valueFiles)
+          let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split("/").pop())
           core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
 
           fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
@@ -103,7 +101,7 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          runHelmTemplating('', [])
+          await runHelmTemplating('', [])
         }
 
         // Check for additional-manifest-templating
@@ -118,7 +116,7 @@ export async function run(): Promise<void> {
             }
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
-            runHelmTemplating(prefix + '.', valueFiles)
+            await runHelmTemplating(prefix + '.', valueFiles)
           }
         } else {
           core.info('Additional manifest templating disabled')
