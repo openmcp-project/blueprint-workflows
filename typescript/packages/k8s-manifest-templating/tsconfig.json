@@ -24,7 +24,7 @@
     "listing/dist",
     "./node_modules",
     "listing/tests",
-    "./__test__",
+    "./test",
     "./coverage"
   ],
   "references": [
