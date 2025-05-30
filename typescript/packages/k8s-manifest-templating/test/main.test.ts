@@ -7,13 +7,13 @@ let core: any
 let utils: any
 
 describe('main.run manifest templating scenarios', () => {
-  const OLD_ENV = process.env;
+  const OLD_ENV = process.env
 
   beforeEach(() => {
     jest.clearAllMocks()
     jest.resetModules()
 
-    process.env = { ...OLD_ENV };
+    process.env = { ...OLD_ENV }
 
     jest.doMock('@actions/core', () => ({
       startGroup: jest.fn(),
@@ -66,12 +66,14 @@ describe('main.run manifest templating scenarios', () => {
               readPipelineFeatureOptions: jest.fn(() => false)
             }))
           },
-          Git: { getInstance: jest.fn(() => ({
-            status: jest.fn().mockResolvedValue({ stdout: '' }),
-            add: jest.fn(),
-            commit: jest.fn(),
-            push: jest.fn()
-          }))}
+          Git: {
+            getInstance: jest.fn(() => ({
+              status: jest.fn().mockResolvedValue({ stdout: '' }),
+              add: jest.fn(),
+              commit: jest.fn(),
+              push: jest.fn()
+            }))
+          }
         }
       }
     })
@@ -84,13 +86,13 @@ describe('main.run manifest templating scenarios', () => {
   })
 
   afterAll(() => {
-    process.env = OLD_ENV; // Restore old environment
-  });
+    process.env = OLD_ENV // Restore old environment
+  })
 
   let helmChartInstanceMock: any
 
   function setupHelmChartListingDoc(options: any) {
-    process.env.GITHUB_WORKSPACE = 'testenv';
+    process.env.GITHUB_WORKSPACE = 'testenv'
 
     helmChartInstanceMock = {
       getListingFileContent: jest.fn().mockReturnValue(`test-custom-chart__test-custom-chart:
@@ -98,8 +100,7 @@ describe('main.run manifest templating scenarios', () => {
   name: test-custom-chart
   folderName: test-custom-chart
   relativePath: test/helm/charts/test-custom-chart
-  manifestPath: test/helm/charts`
-      ),
+  manifestPath: test/helm/charts`),
       template: jest.fn().mockReturnValue(undefined),
       readPipelineFeature: jest.fn().mockReturnValue(parseDocument(options)),
       readPipelineFeatureOptions: jest.fn().mockReturnValue(false)
@@ -111,7 +112,7 @@ describe('main.run manifest templating scenarios', () => {
   }
 
   it('handles default-manifest-templating undefined (should run default)', async () => {
-    setupHelmChartListingDoc("")
+    setupHelmChartListingDoc('')
 
     await main.run()
 
@@ -125,9 +126,7 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      [
-        '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
-      ]
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
 
@@ -136,8 +135,8 @@ describe('main.run manifest templating scenarios', () => {
   })
 
   it('handles default-manifest-templating true', async () => {
-    setupHelmChartListingDoc("default-manifest-templating: true")
-    
+    setupHelmChartListingDoc('default-manifest-templating: true')
+
     await main.run()
 
     expect(core.info).toHaveBeenCalledWith('Default manifest templating enabled')
@@ -150,16 +149,14 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      [
-        '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
-      ]
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
   })
 
   it('handles default-manifest-templating false', async () => {
-    setupHelmChartListingDoc("default-manifest-templating: false")
-    
+    setupHelmChartListingDoc('default-manifest-templating: false')
+
     await main.run()
 
     expect(core.info).toHaveBeenCalledWith('Default manifest templating disabled')
@@ -169,7 +166,7 @@ describe('main.run manifest templating scenarios', () => {
 
   it('handles default-manifest-templating defined but not boolean', async () => {
     setupHelmChartListingDoc("default-manifest-templating: 'yes'")
-    
+
     await main.run()
 
     expect(core.info).toHaveBeenCalledWith('Default manifest templating enabled')
@@ -182,21 +179,20 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      [
-        '--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'
-      ]
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
   })
 
   it('handles additional-manifest-templating defined', async () => {
     setupHelmChartListingDoc(
-`default-manifest-templating: false
+      `default-manifest-templating: false
 additional-manifest-templating:
   - prefix-manifest-folder-name: "dev"
     value-files:
       - "values.network.yaml"
-      - "values.dev.yaml"`)
+      - "values.dev.yaml"`
+    )
 
     await main.run()
     // Should still call template, but prefix will be assigned an incrementing value
@@ -210,18 +206,19 @@ additional-manifest-templating:
         root: ''
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
-      [
-        '--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"'
-      ]
+      ['--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"']
     )
-    expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"prefix-manifest-folder-name":"dev","value-files":["values.network.yaml","values.dev.yaml"]}]')
+    expect(core.info).toHaveBeenCalledWith(
+      'Additional manifest templating detected: [{"prefix-manifest-folder-name":"dev","value-files":["values.network.yaml","values.dev.yaml"]}]'
+    )
   })
 
   it('handles additional-manifest-templating defined but not array', async () => {
     setupHelmChartListingDoc(
-`default-manifest-templating: false
-additional-manifest-templating: true`)
-    
+      `default-manifest-templating: false
+additional-manifest-templating: true`
+    )
+
     await main.run()
 
     expect(helmChartInstanceMock.template).not.toHaveBeenCalled()
@@ -230,8 +227,9 @@ additional-manifest-templating: true`)
 
   it('handles additional-manifest-templating defined but empty', async () => {
     setupHelmChartListingDoc(
-`default-manifest-templating: false
-additional-manifest-templating: []`)
+      `default-manifest-templating: false
+additional-manifest-templating: []`
+    )
 
     await main.run()
     // Should not call template, but should log info
@@ -241,11 +239,12 @@ additional-manifest-templating: []`)
 
   it('handles prefix-manifest-folder-name undefined or empty', async () => {
     setupHelmChartListingDoc(
-`default-manifest-templating: false
+      `default-manifest-templating: false
 additional-manifest-templating:
   - value-files:
       - "values.network.yaml"
-      - "values.dev.yaml"`)
+      - "values.dev.yaml"`
+    )
 
     await main.run()
     // Should still call template, but prefix will be assigned an incrementing value
@@ -259,9 +258,7 @@ additional-manifest-templating:
         root: ''
       },
       '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
-      [
-        '--output-dir "testenv/manifests/test/helm/charts/ENV1.test-custom-chart"'
-      ]
+      ['--output-dir "testenv/manifests/test/helm/charts/ENV1.test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"value-files":["values.network.yaml","values.dev.yaml"]}]')
   })

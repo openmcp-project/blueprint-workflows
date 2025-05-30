@@ -61,7 +61,7 @@ export async function run(): Promise<void> {
         core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
         let runHelmTemplating = function (prefix: string, valueFiles: string[]) {
-          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:'+ valueFiles)
+          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
           let manifestTargetFolder: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlName)
           core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
 
@@ -86,7 +86,7 @@ export async function run(): Promise<void> {
             valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
           })
 
-          core.debug("Calling utilsHelmChart.template with args: " + valueArgs + " and helmOptions: " + helmOptions)
+          core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
           utilsHelmChart.template(dir, valueArgs, helmOptions)
           tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlName])
         }
@@ -111,8 +111,8 @@ export async function run(): Promise<void> {
           for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
             addCounter++
             let prefix = additional['prefix-manifest-folder-name']
-            if( !prefix || prefix === '') {
-              prefix = "ENV" + addCounter++
+            if (!prefix || prefix === '') {
+              prefix = 'ENV' + addCounter++
             }
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
