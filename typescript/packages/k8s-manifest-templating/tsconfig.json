@@ -23,7 +23,7 @@
     "listing/coverage",
     "listing/dist",
     "./node_modules",
-    "listing/__tests__",
+    "listing/tests",
     "./coverage"
   ],
   "references": [
