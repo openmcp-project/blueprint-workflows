@@ -66593,7 +66593,7 @@ async function run() {
                         valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile;
                     });
                     core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions);
-                    utilsHelmChart.template(dir, valueArgs, helmOptions);
+                    await utilsHelmChart.template(dir, valueArgs, helmOptions);
                     tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()]);
                 };
                 // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
