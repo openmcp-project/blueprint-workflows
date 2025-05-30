@@ -89,7 +89,7 @@ export async function run(): Promise<void> {
           })
 
           core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
-          utilsHelmChart.template(dir, valueArgs, helmOptions)
+          await utilsHelmChart.template(dir, valueArgs, helmOptions)
           tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
         }
 
