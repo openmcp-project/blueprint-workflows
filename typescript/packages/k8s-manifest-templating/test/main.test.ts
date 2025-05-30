@@ -265,3 +265,4 @@ additional-manifest-templating:
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"value-files":["values.network.yaml","values.dev.yaml"]}]')
   })
+})
