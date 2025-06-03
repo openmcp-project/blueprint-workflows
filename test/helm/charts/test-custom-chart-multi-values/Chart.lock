@@ -1,6 +1,0 @@
-dependencies:
-- name: sap-btp-services
-  repository: file://../mcp/sap-btp-services
-  version: 0.0.5
-digest: sha256:962c71ed13090005c654e6783ea307cd876426bf1de8f87bc8e31861788b34c2
-generated: "2024-11-13T10:40:29.733088+01:00"
