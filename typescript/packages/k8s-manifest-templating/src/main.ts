@@ -4,6 +4,39 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
 
+async function runHelmTemplating(prefix: string, valueFiles: string[], GITHUB_WORKSPACE: string, listingYamlManifestPath: string, listingYamlRelativePath: string, listingYamlName: string, dir: path.ParsedPath, utilsHelmChart: utils.HelmChart, tableRows: any[], helmChartID: string): Promise<void> {
+  core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
+  let manifestTargetFolder: path.FormatInputPathObject = path.parse(
+    GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
+  )
+  core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
+
+  fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
+  core.debug('Created folder: ' + path.format(manifestTargetFolder))
+
+  let helmOptions: string[] = []
+  let options: yaml.Document = new yaml.Document('')
+
+  if (utilsHelmChart.readPipelineFeatureOptions(dir, constants.Functionality.k8sManifestTemplating) !== false) {
+    options = utilsHelmChart.readPipelineFeatureOptions(dir, constants.Functionality.k8sManifestTemplating)
+  }
+
+  if (utils.unrapYamlbyKey(options, '--skip-crds', false)) {
+    helmOptions.push('--skip-crds')
+  }
+
+  helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
+
+  let valueArgs: string = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml
+  valueFiles.forEach(valueFile => {
+    valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
+  })
+
+  core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
+  await utilsHelmChart.template(dir, valueArgs, helmOptions)
+  tableRows.push([listingYamlName, listingYamlRelativePath, helmChartID, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
+}
+
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
@@ -60,39 +93,6 @@ export async function run(): Promise<void> {
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
         core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
 
-        let runHelmTemplating = async function (prefix: string, valueFiles: string[]) {
-          core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
-          let manifestTargetFolder: path.FormatInputPathObject = path.parse(
-            GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
-          )
-          core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
-
-          fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
-          core.debug('Created folder: ' + path.format(manifestTargetFolder))
-
-          let helmOptions: string[] = []
-          let options: yaml.Document = new yaml.Document('')
-
-          if (utilsHelmChart.readPipelineFeatureOptions(dir, constants.Functionality.k8sManifestTemplating) !== false) {
-            options = utilsHelmChart.readPipelineFeatureOptions(dir, constants.Functionality.k8sManifestTemplating)
-          }
-
-          if (utils.unrapYamlbyKey(options, '--skip-crds', false)) {
-            helmOptions.push('--skip-crds')
-          }
-
-          helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
-
-          let valueArgs: string = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml
-          valueFiles.forEach(valueFile => {
-            valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
-          })
-
-          core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
-          await utilsHelmChart.template(dir, valueArgs, helmOptions)
-          tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
-        }
-
         // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
         let helmTemplatingOptionsObj: any = helmTemplatingOptions
         if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
@@ -103,7 +103,17 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          await runHelmTemplating('', [])
+          await runHelmTemplating(
+            '',
+            [],
+            GITHUB_WORKSPACE,
+            listingYamlManifestPath,
+            listingYamlRelativePath,
+            listingYamlName,
+            dir,
+            utilsHelmChart,
+            tableRows,
+            item)
         }
 
         // Check for additional-manifest-templating
@@ -118,7 +128,17 @@ export async function run(): Promise<void> {
             }
             const valueFiles = additional['value-files']
             core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`)
-            await runHelmTemplating(prefix + '.', valueFiles)
+            await runHelmTemplating(
+              prefix + '.',
+              valueFiles,
+              GITHUB_WORKSPACE,
+              listingYamlManifestPath,
+              listingYamlRelativePath,
+              listingYamlName,
+              dir,
+              utilsHelmChart,
+              tableRows,
+              item)
           }
         } else {
           core.info('Additional manifest templating disabled')
