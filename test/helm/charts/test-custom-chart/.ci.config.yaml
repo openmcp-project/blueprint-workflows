@@ -38,5 +38,7 @@ k8s-manifest-templating:
   additional-manifest-templating: # define this if you want additional helm manifest folder e.g. dev....
     - prefix-manifest-folder-name: "dev"
       value-files:
-        - "values.network.yaml"
         - "values.dev.yaml"
+    - prefix-manifest-folder-name: "prod"
+      value-files:
+        - "values.prod.yaml"
