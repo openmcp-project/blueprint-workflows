@@ -66524,6 +66524,29 @@ const shared_1 = __nccwpck_require__(8455);
 const fs = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
 const yaml = __importStar(__nccwpck_require__(8815));
+async function runHelmTemplating(prefix, valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, helmChartID) {
+    core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
+    let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
+    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
+    core.debug('Created folder: ' + path.format(manifestTargetFolder));
+    let helmOptions = [];
+    let options = new yaml.Document('');
+    if (utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating) !== false) {
+        options = utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating);
+    }
+    if (shared_1.utils.unrapYamlbyKey(options, '--skip-crds', false)) {
+        helmOptions.push('--skip-crds');
+    }
+    helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
+    let valueArgs = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml;
+    valueFiles.forEach(valueFile => {
+        valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile;
+    });
+    core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions);
+    await utilsHelmChart.template(dir, valueArgs, helmOptions);
+    tableRows.push([listingYamlName, listingYamlRelativePath, helmChartID, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()]);
+}
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
@@ -66573,29 +66596,6 @@ async function run() {
                 core.info('K8s Manifest Templating enabled for Helm Chart UID: ' + item);
                 const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
                 core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions));
-                let runHelmTemplating = async function (prefix, valueFiles) {
-                    core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
-                    let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
-                    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
-                    fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
-                    core.debug('Created folder: ' + path.format(manifestTargetFolder));
-                    let helmOptions = [];
-                    let options = new yaml.Document('');
-                    if (utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating) !== false) {
-                        options = utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating);
-                    }
-                    if (shared_1.utils.unrapYamlbyKey(options, '--skip-crds', false)) {
-                        helmOptions.push('--skip-crds');
-                    }
-                    helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
-                    let valueArgs = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml;
-                    valueFiles.forEach(valueFile => {
-                        valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile;
-                    });
-                    core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions);
-                    await utilsHelmChart.template(dir, valueArgs, helmOptions);
-                    tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()]);
-                };
                 // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
                 let helmTemplatingOptionsObj = helmTemplatingOptions;
                 if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
@@ -66606,7 +66606,7 @@ async function run() {
                 }
                 else {
                     core.info('Default manifest templating enabled');
-                    await runHelmTemplating('', []);
+                    await runHelmTemplating('', [], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
                 }
                 // Check for additional-manifest-templating
                 if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
@@ -66620,7 +66620,7 @@ async function run() {
                         }
                         const valueFiles = additional['value-files'];
                         core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`);
-                        await runHelmTemplating(prefix + '.', valueFiles);
+                        await runHelmTemplating(prefix + '.', valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
                     }
                 }
                 else {

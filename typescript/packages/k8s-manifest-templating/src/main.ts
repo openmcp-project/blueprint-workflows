@@ -4,7 +4,18 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
 
-async function runHelmTemplating(prefix: string, valueFiles: string[], GITHUB_WORKSPACE: string, listingYamlManifestPath: string, listingYamlRelativePath: string, listingYamlName: string, dir: path.ParsedPath, utilsHelmChart: utils.HelmChart, tableRows: any[], helmChartID: string): Promise<void> {
+async function runHelmTemplating(
+  prefix: string,
+  valueFiles: string[],
+  GITHUB_WORKSPACE: string,
+  listingYamlManifestPath: string,
+  listingYamlRelativePath: string,
+  listingYamlName: string,
+  dir: path.ParsedPath,
+  utilsHelmChart: utils.HelmChart,
+  tableRows: any[],
+  helmChartID: string
+): Promise<void> {
   core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles)
   let manifestTargetFolder: path.FormatInputPathObject = path.parse(
     GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
@@ -103,17 +114,7 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          await runHelmTemplating(
-            '',
-            [],
-            GITHUB_WORKSPACE,
-            listingYamlManifestPath,
-            listingYamlRelativePath,
-            listingYamlName,
-            dir,
-            utilsHelmChart,
-            tableRows,
-            item)
+          await runHelmTemplating('', [], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item)
         }
 
         // Check for additional-manifest-templating
@@ -138,7 +139,8 @@ export async function run(): Promise<void> {
               dir,
               utilsHelmChart,
               tableRows,
-              item)
+              item
+            )
           }
         } else {
           core.info('Additional manifest templating disabled')
