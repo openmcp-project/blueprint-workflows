@@ -27,7 +27,7 @@ describe('main.run manifest templating scenarios', () => {
         write: jest.fn().mockResolvedValue(undefined)
       },
       info: jest.fn(),
-      notice: jest.fn(),
+      error: jest.fn(),
       debug: jest.fn(),
       setFailed: jest.fn()
     }))
@@ -249,17 +249,8 @@ additional-manifest-templating:
     await main.run()
     // Should still call template, but prefix will be assigned an incrementing value
     //console.log(helmChartInstanceMock.template.mock.calls)
-    expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
-      {
-        dir: '/home/runner/work/blueprint-workflows/blueprint-workflows/test/helm/charts/test-custom-chart',
-        base: '/home/runner/work/blueprint-workflows/blueprint-workflows/test/helm/charts/test-custom-chart',
-        ext: '',
-        name: '',
-        root: ''
-      },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
-      ['--output-dir "testenv/manifests/test/helm/charts/ENV1.test-custom-chart"']
-    )
+    expect(helmChartInstanceMock.template).not.toHaveBeenCalled()
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating detected: [{"value-files":["values.network.yaml","values.dev.yaml"]}]')
+    expect(core.error).toHaveBeenCalledWith("Missing 'prefix-manifest-folder-name' in additional manifest templating options")
   })
 })
