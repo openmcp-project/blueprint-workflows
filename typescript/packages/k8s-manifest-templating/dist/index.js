@@ -66611,12 +66611,11 @@ async function run() {
                 // Check for additional-manifest-templating
                 if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
                     core.info(`Additional manifest templating detected: ${JSON.stringify(helmTemplatingOptionsObj['additional-manifest-templating'])}`);
-                    let addCounter = 0;
                     for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
-                        addCounter++;
                         let prefix = additional['prefix-manifest-folder-name'];
                         if (!prefix || prefix === '') {
-                            prefix = 'ENV' + addCounter++;
+                            core.error("Missing 'prefix-manifest-folder-name' in additional manifest templating options");
+                            continue;
                         }
                         const valueFiles = additional['value-files'];
                         core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`);
