@@ -125,7 +125,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
       ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
@@ -148,7 +148,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
       ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
@@ -178,7 +178,7 @@ describe('main.run manifest templating scenarios', () => {
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml',
+      ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
       ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
@@ -205,7 +205,7 @@ additional-manifest-templating:
         name: '',
         root: ''
       },
-      '-f testenv/test/helm/charts/test-custom-chart/values.yaml -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
+      ' -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
       ['--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"']
     )
     expect(core.info).toHaveBeenCalledWith(
