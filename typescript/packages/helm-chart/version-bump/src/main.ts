@@ -124,10 +124,10 @@ export async function run(): Promise<void> {
           let cmdShowChart: string = ''
           if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
             console.log('Using upstream repo URL: ' + SOURCE_GIT_REPO_URL)
-            cmdShowChart = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '" || echo "version: 0.0.0"'
+            cmdShowChart = '/bin/bash -c "git show \"upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '\" || echo \"version: 0.0.0\""'
           } else {
             console.log('Using origin repo URL: ' + SOURCE_GIT_REPO_URL)
-            cmdShowChart = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '" || echo "version: 0.0.0"'
+            cmdShowChart = '/bin/bash -c "git show \"origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + constants.HelmChartFiles.Chartyaml + '\" || echo \"version: 0.0.0\""'
           }
           core.debug(cmdShowChart)
           let result = await utilsHelmChart.exec(cmdShowChart, [], { cwd: GITHUB_WORKSPACE })
