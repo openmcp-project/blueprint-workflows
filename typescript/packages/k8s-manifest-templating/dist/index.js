@@ -66539,7 +66539,7 @@ async function runHelmTemplating(prefix, valueFiles, GITHUB_WORKSPACE, listingYa
         helmOptions.push('--skip-crds');
     }
     helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
-    let valueArgs = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml;
+    let valueArgs = '';
     valueFiles.forEach(valueFile => {
         valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile;
     });
@@ -66606,7 +66606,7 @@ async function run() {
                 }
                 else {
                     core.info('Default manifest templating enabled');
-                    await runHelmTemplating('', [], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
+                    await runHelmTemplating('', [shared_1.constants.HelmChartFiles.valuesYaml], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
                 }
                 // Check for additional-manifest-templating
                 if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
