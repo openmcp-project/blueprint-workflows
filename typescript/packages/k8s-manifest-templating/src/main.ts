@@ -38,7 +38,7 @@ async function runHelmTemplating(
 
   helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
-  let valueArgs: string = '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + constants.HelmChartFiles.valuesYaml
+  let valueArgs: string = ''
   valueFiles.forEach(valueFile => {
     valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
   })
@@ -114,7 +114,7 @@ export async function run(): Promise<void> {
           core.info('Default manifest templating disabled')
         } else {
           core.info('Default manifest templating enabled')
-          await runHelmTemplating('', [], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item)
+          await runHelmTemplating('', [constants.HelmChartFiles.valuesYaml], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item)
         }
 
         // Check for additional-manifest-templating
