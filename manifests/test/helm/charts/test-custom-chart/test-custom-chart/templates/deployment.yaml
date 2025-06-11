@@ -37,7 +37,7 @@ spec:
           image: "nginx:1.16.0"
           imagePullPolicy: IfNotPresent
           ports:
-            - name: http
+            - name: https
               containerPort: 80
               protocol: TCP
           livenessProbe:
