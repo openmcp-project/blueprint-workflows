@@ -69302,11 +69302,11 @@ async function run() {
                     let cmdShowChart = '';
                     if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
                         console.log('Using upstream repo URL: ' + SOURCE_GIT_REPO_URL);
-                        cmdShowChart = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                        cmdShowChart = 'git show "upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '" || echo "version: 0.0.0"';
                     }
                     else {
                         console.log('Using origin repo URL: ' + SOURCE_GIT_REPO_URL);
-                        cmdShowChart = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+                        cmdShowChart = 'git show "origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '" || echo "version: 0.0.0"';
                     }
                     core.debug(cmdShowChart);
                     let result = await utilsHelmChart.exec(cmdShowChart, [], { cwd: GITHUB_WORKSPACE });
