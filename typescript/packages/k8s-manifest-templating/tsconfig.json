@@ -16,20 +16,20 @@
   },
   "typeAcquisition": { "include": ["jest"] },
   "include": [
-    "src",
-    "test"
+    "src"
   ],
   "exclude": [
     "listing/coverage",
     "listing/dist",
     "./node_modules",
     "listing/tests",
-    "./test",
+    "__test__",
+    "**/*.test.ts",
     "./coverage"
   ],
   "references": [
     {
-      "path": "../../../packages/shared"
+      "path": "../shared"
     }
   ]
 }
