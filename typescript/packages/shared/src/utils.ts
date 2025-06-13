@@ -342,6 +342,34 @@ export class HelmChart {
     }
     return result.stdout
   }
+
+  /**
+   * Reads a specific feature section from a YAML configuration file for a given function name and feature name.
+   * @param dir - Directory path as a path.FormatInputPathObject.
+   * @param functionName - The name of the function section in the YAML.
+   * @param featureName - The name of the feature to retrieve within the function section.
+   * @returns The feature object if found, or false if not present.
+   */
+  public readPipelineFeature(dir: path.FormatInputPathObject, functionName: string, featureName: string): yaml.Document | false {
+    const configPath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
+    if (!fs.existsSync(configPath)) {
+      return false
+    }
+
+    const ciConfigFileDoc = readYamlFile(path.parse(configPath))
+    const functionSection = unrapYamlbyKey(ciConfigFileDoc, functionName, false)
+    if (functionSection === false) {
+      return false
+    }
+
+    const featureSection = unrapYamlbyKey(functionSection, featureName, false)
+    if (featureSection === false) {
+      return false
+    }
+
+    return featureSection
+  }
+
   public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
     if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
       return false
