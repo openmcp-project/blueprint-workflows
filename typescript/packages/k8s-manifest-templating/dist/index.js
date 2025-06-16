@@ -55869,6 +55869,29 @@ class HelmChart {
         }
         return result.stdout;
     }
+    /**
+     * Reads a specific feature section from a YAML configuration file for a given function name and feature name.
+     * @param dir - Directory path as a path.FormatInputPathObject.
+     * @param functionName - The name of the function section in the YAML.
+     * @param featureName - The name of the feature to retrieve within the function section.
+     * @returns The feature object if found, or false if not present.
+     */
+    readPipelineFeature(dir, functionName, featureName) {
+        const configPath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml);
+        if (!fs.existsSync(configPath)) {
+            return false;
+        }
+        const ciConfigFileDoc = readYamlFile(path.parse(configPath));
+        const functionSection = unrapYamlbyKey(ciConfigFileDoc, functionName, false);
+        if (functionSection === false) {
+            return false;
+        }
+        const featureSection = unrapYamlbyKey(functionSection, featureName, false);
+        if (featureSection === false) {
+            return false;
+        }
+        return featureSection;
+    }
     readPipelineFeatureOptions(dir, functionName) {
         if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
             return false;
@@ -66501,6 +66524,29 @@ const shared_1 = __nccwpck_require__(8455);
 const fs = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
 const yaml = __importStar(__nccwpck_require__(8815));
+async function runHelmTemplating(prefix, valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, helmChartID) {
+    core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
+    let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
+    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
+    core.debug('Created folder: ' + path.format(manifestTargetFolder));
+    let helmOptions = [];
+    let options = new yaml.Document('');
+    if (utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating) !== false) {
+        options = utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating);
+    }
+    if (shared_1.utils.unrapYamlbyKey(options, '--skip-crds', false)) {
+        helmOptions.push('--skip-crds');
+    }
+    helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
+    let valueArgs = '';
+    valueFiles.forEach(valueFile => {
+        valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile;
+    });
+    core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions);
+    await utilsHelmChart.template(dir, valueArgs, helmOptions);
+    tableRows.push([listingYamlName, listingYamlRelativePath, helmChartID, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()]);
+}
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
@@ -66535,28 +66581,53 @@ async function run() {
         /* ==================== MANIFEST GENERATION ==================== */
         core.summary.addHeading('K8s Manifest Templating Results').addRaw(summaryRawContent);
         for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
+            core.info('Processing Helm Chart UID:' + item);
             let yamlitem = shared_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
             let listingYamlDir = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.dir);
+            core.debug('Listing YAML Directory:' + listingYamlDir);
             let listingYamlName = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.name);
+            core.debug('Listing YAML Name:' + listingYamlName);
+            let listingYamlManifestPath = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.manifestPath);
+            core.debug('Listing YAML Manifest Path:' + listingYamlManifestPath);
             let listingYamlRelativePath = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.relativePath);
+            core.debug('Listing YAML Relative Path:' + listingYamlRelativePath);
             let dir = path.parse(listingYamlDir);
             if (shared_1.utils.isFunctionEnabled(dir, shared_1.constants.Functionality.k8sManifestTemplating, true)) {
-                let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlRelativePath);
-                fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
-                core.debug('Created folder: ' + path.format(manifestTargetFolder));
-                let helmOptions = [];
-                let options = new yaml.Document('');
-                if (utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating) !== false) {
-                    options = utilsHelmChart.readPipelineFeatureOptions(dir, shared_1.constants.Functionality.k8sManifestTemplating);
+                core.info('K8s Manifest Templating enabled for Helm Chart UID: ' + item);
+                const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'helm-charts');
+                core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions));
+                // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
+                let helmTemplatingOptionsObj = helmTemplatingOptions;
+                if (helmTemplatingOptions && typeof helmTemplatingOptions !== 'boolean' && typeof helmTemplatingOptions.toJSON === 'function') {
+                    helmTemplatingOptionsObj = helmTemplatingOptions.toJSON();
                 }
-                if (shared_1.utils.unrapYamlbyKey(options, '--skip-crds', false)) {
-                    helmOptions.push('--skip-crds');
+                if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && helmTemplatingOptionsObj['default-manifest-templating'] === false) {
+                    core.info('Default manifest templating disabled');
                 }
-                helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"');
-                await utilsHelmChart.template(dir, '-f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + shared_1.constants.HelmChartFiles.valuesYaml, helmOptions);
-                tableRows.push([listingYamlName, listingYamlRelativePath, item, '✅', 'manifests/' + listingYamlRelativePath]);
+                else {
+                    core.info('Default manifest templating enabled');
+                    await runHelmTemplating('', [shared_1.constants.HelmChartFiles.valuesYaml], GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
+                }
+                // Check for additional-manifest-templating
+                if (helmTemplatingOptionsObj && typeof helmTemplatingOptionsObj === 'object' && Array.isArray(helmTemplatingOptionsObj['additional-manifest-templating'])) {
+                    core.info(`Additional manifest templating detected: ${JSON.stringify(helmTemplatingOptionsObj['additional-manifest-templating'])}`);
+                    for (const additional of helmTemplatingOptionsObj['additional-manifest-templating']) {
+                        let prefix = additional['prefix-manifest-folder-name'];
+                        if (!prefix || prefix === '') {
+                            core.error("Missing 'prefix-manifest-folder-name' in additional manifest templating options");
+                            continue;
+                        }
+                        const valueFiles = additional['value-files'];
+                        core.info(`Prefix: ${prefix}, Value files: ${JSON.stringify(valueFiles)}`);
+                        await runHelmTemplating(prefix + '.', valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, item);
+                    }
+                }
+                else {
+                    core.info('Additional manifest templating disabled');
+                }
             }
             else {
+                core.info('K8s Manifest Templating disabled for Helm Chart UID: ' + item);
                 tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-']);
             }
         }

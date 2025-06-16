@@ -35,3 +35,13 @@ k8s-manifest-templating:
   enable: true
   options:
     --skip-crds: true # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default true)
+  helm-charts:
+    additional-manifest-templating: # define this if you want additional helm manifest folder e.g. dev....
+      - prefix-manifest-folder-name: "dev"
+        value-files:
+          - "values.yaml"
+          - "values.dev.yaml"
+      - prefix-manifest-folder-name: "prod"
+        value-files:
+          - "values.yaml"
+          - "values.prod.yaml"
