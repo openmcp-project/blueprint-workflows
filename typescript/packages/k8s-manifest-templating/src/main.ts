@@ -102,7 +102,7 @@ export async function run(): Promise<void> {
       if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
         core.info('K8s Manifest Templating enabled for Helm Chart UID: ' + item)
         const helmTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'helm-charts')
-        core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions))
+        core.debug('helmTemplatingOptions: ' + JSON.stringify(helmTemplatingOptions.toJSON()))
 
         // Only call .toJSON() if helmTemplatingOptions is not false and has .toJSON
         let helmTemplatingOptionsObj: any = helmTemplatingOptions
