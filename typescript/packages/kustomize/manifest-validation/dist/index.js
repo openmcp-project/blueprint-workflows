@@ -66542,8 +66542,11 @@ async function run() {
     try {
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         // Specify the directory to start searching from
-        const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
-        dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
+        const GITHUB_WORKSPACE = process.env[dist_1.constants.envvars.GITHUB_WORKSPACE];
+        if (!GITHUB_WORKSPACE || GITHUB_WORKSPACE.trim() === '') {
+            core.setFailed('Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
+            return;
+        }
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
         // Check if kustomize listing file exists
         const kustomizeListingPath = path.join(GITHUB_WORKSPACE, dist_1.constants.KustomizeFiles.listingFile);
