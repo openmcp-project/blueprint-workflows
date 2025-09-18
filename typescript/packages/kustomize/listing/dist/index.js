@@ -66581,9 +66581,7 @@ async function run() {
             });
             let kustomizationFileDoc = yaml.parseDocument(kustomizationFileContent);
             // Try to get a name from the kustomization file, fall back to folder name
-            let projectName = kustomizationFileDoc.get('namePrefix') ||
-                kustomizationFileDoc.get('nameSuffix') ||
-                path.basename(kustomizeDir);
+            let projectName = kustomizationFileDoc.get('namePrefix') || kustomizationFileDoc.get('nameSuffix') || path.basename(kustomizeDir);
             // Ensure projectName is a string
             const projectNameStr = String(projectName);
             let kustomizeListingYamlDocKeyValue = new String().concat(path.basename(kustomizeDir), '__', projectNameStr);

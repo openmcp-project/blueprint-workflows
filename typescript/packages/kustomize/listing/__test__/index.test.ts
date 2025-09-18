@@ -38,7 +38,7 @@ describe('action', () => {
 
     // Set up test environment
     process.env[constants.envvars.GITHUB_WORKSPACE] = GITHUB_WORKSPACE
-    
+
     // Ensure test workspace directory exists
     if (!fs.existsSync(GITHUB_WORKSPACE)) {
       fs.mkdirSync(GITHUB_WORKSPACE, { recursive: true })
@@ -61,30 +61,31 @@ describe('action', () => {
     // Create a temporary kustomization.yaml file for testing
     const testKustomizeDir = path.join(GITHUB_WORKSPACE!, 'test-kustomize')
     const testKustomizationFile = path.join(testKustomizeDir, 'kustomization.yaml')
-    
+
     if (!fs.existsSync(testKustomizeDir)) {
       fs.mkdirSync(testKustomizeDir, { recursive: true })
     }
-    
-    fs.writeFileSync(testKustomizationFile, `
+
+    fs.writeFileSync(
+      testKustomizationFile,
+      `
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namePrefix: test-
 resources:
   - deployment.yaml
   - service.yaml
-`)
+`
+    )
 
     await main.run()
     expect(runMock).toHaveReturned()
 
     // Verify that the listing file was created
     expect(fs.existsSync(path.format(pathKustomizeFileListing))).toBe(true)
-    
+
     // Verify that notice was called with success message
-    expect(noticeMock).toHaveBeenCalledWith(
-      util.format(constants.Msgs.KustomizeListingFileWritten, constants.KustomizeFiles.listingFile)
-    )
+    expect(noticeMock).toHaveBeenCalledWith(util.format(constants.Msgs.KustomizeListingFileWritten, constants.KustomizeFiles.listingFile))
 
     // Clean up
     fs.rmSync(testKustomizeDir, { recursive: true, force: true })
@@ -101,9 +102,7 @@ resources:
     expect(runMock).toHaveReturned()
 
     // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(
-      util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE)
-    )
+    expect(setFailedMock).toHaveBeenCalledWith(util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE))
 
     process.env = originalEnv
   })
@@ -116,9 +115,7 @@ resources:
     expect(runMock).toHaveReturned()
 
     // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(
-      util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE)
-    )
+    expect(setFailedMock).toHaveBeenCalledWith(util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE))
 
     process.env = originalEnv
   })

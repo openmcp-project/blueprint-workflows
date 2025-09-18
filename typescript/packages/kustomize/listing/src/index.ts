@@ -34,10 +34,10 @@ export async function run(): Promise<void> {
     // https://github.com/actions/toolkit/tree/main/packages/glob
     const kustomizationYamlDirs = utils.lookup(startDir, constants.KustomizeFiles.KustomizationYaml)
     const kustomizationYmlDirs = utils.lookup(startDir, constants.KustomizeFiles.KustomizationYml)
-    
+
     // Combine both results and remove duplicates
     const kustomizeDirs = [...new Set([...kustomizationYamlDirs, ...kustomizationYmlDirs])]
-    
+
     core.debug('Directories containing kustomization files:' + kustomizeDirs.map((item: any) => `\n- ${item}`))
     core.endGroup()
 
@@ -50,7 +50,7 @@ export async function run(): Promise<void> {
       // Check which kustomization file exists (yaml or yml)
       let kustomizationFile: string = constants.KustomizeFiles.KustomizationYaml
       let kustomizationPath = path.join(kustomizeDir, constants.KustomizeFiles.KustomizationYaml)
-      
+
       if (!fs.existsSync(kustomizationPath)) {
         kustomizationFile = constants.KustomizeFiles.KustomizationYml
         kustomizationPath = path.join(kustomizeDir, constants.KustomizeFiles.KustomizationYml)
@@ -60,12 +60,10 @@ export async function run(): Promise<void> {
         encoding: 'utf8'
       })
       let kustomizationFileDoc = yaml.parseDocument(kustomizationFileContent)
-      
+
       // Try to get a name from the kustomization file, fall back to folder name
-      let projectName = kustomizationFileDoc.get('namePrefix') || 
-                       kustomizationFileDoc.get('nameSuffix') || 
-                       path.basename(kustomizeDir)
-      
+      let projectName = kustomizationFileDoc.get('namePrefix') || kustomizationFileDoc.get('nameSuffix') || path.basename(kustomizeDir)
+
       // Ensure projectName is a string
       const projectNameStr = String(projectName)
       let kustomizeListingYamlDocKeyValue = new String().concat(path.basename(kustomizeDir), '__', projectNameStr)
@@ -91,7 +89,8 @@ export async function run(): Promise<void> {
 
     core.notice(util.format(constants.Msgs.KustomizeListingFileWritten, constants.KustomizeFiles.listingFile))
 
-    let summaryRawContent: string = '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>'
+    let summaryRawContent: string =
+      '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>'
     if (process.env.JEST_WORKER_ID == undefined) {
       await core.summary.addHeading('Kustomize Listing Results').addRaw(summaryRawContent).write()
     }
