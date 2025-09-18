@@ -29757,7 +29757,7 @@ module.exports = {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.versionBumpIgnoredFiles = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
+exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.versionBumpIgnoredFiles = exports.KustomizeFiles = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
 exports.ListingYamlKeys = {
     dir: 'dir',
     name: 'name',
@@ -29772,6 +29772,13 @@ exports.HelmChartFiles = {
     valuesYaml: 'values.yaml',
     ReadmeMd: 'README.md',
     listingFile: 'helm-chart-listing.yaml'
+};
+exports.KustomizeFiles = {
+    KustomizationYaml: 'kustomization.yaml',
+    KustomizationYml: 'kustomization.yml',
+    ciConfigYaml: '.ci.config.yaml',
+    ReadmeMd: 'README.md',
+    listingFile: 'kustomize-listing.yaml'
 };
 exports.versionBumpIgnoredFiles = ['.ci.config.yaml'];
 exports.envvars = {
@@ -29795,7 +29802,8 @@ exports.Functionality = {
     helmChartValidation: 'helm-chart-validation',
     helmChartVersionBump: 'helm-chart-version-bump',
     helmChartDependencyUpdate: 'helm-chart-dependency-update',
-    k8sManifestTemplating: 'k8s-manifest-templating'
+    k8sManifestTemplating: 'k8s-manifest-templating',
+    kustomizeListing: 'kustomize-listing'
 };
 exports.Yaml = {
     enable: 'enable'
@@ -29811,7 +29819,10 @@ exports.ErrorMsgs = {
 exports.Msgs = {
     HelmChartListingFolderContaining: 'Helm Chart Listing Folder containing %s',
     HelmChartListingFileYamlContent: 'Helm Chart Listing File Yaml Content',
-    HelmChartListingFileWritten: 'Helm Chart Listing File %s written.'
+    HelmChartListingFileWritten: 'Helm Chart Listing File %s written.',
+    KustomizeListingFolderContaining: 'Kustomize Listing Folder containing %s',
+    KustomizeListingFileYamlContent: 'Kustomize Listing File Yaml Content',
+    KustomizeListingFileWritten: 'Kustomize Listing File %s written.'
 };
 
 

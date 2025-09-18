@@ -13,6 +13,13 @@ export declare const HelmChartFiles: {
     readonly ReadmeMd: "README.md";
     readonly listingFile: "helm-chart-listing.yaml";
 };
+export declare const KustomizeFiles: {
+    readonly KustomizationYaml: "kustomization.yaml";
+    readonly KustomizationYml: "kustomization.yml";
+    readonly ciConfigYaml: ".ci.config.yaml";
+    readonly ReadmeMd: "README.md";
+    readonly listingFile: "kustomize-listing.yaml";
+};
 export declare const versionBumpIgnoredFiles: string[];
 export declare const envvars: {
     readonly SOURCE_GIT_REPO_URL: "SOURCE_GIT_REPO_URL";
@@ -35,6 +42,7 @@ export declare const Functionality: {
     helmChartVersionBump: string;
     helmChartDependencyUpdate: string;
     k8sManifestTemplating: string;
+    kustomizeListing: string;
 };
 export declare const Yaml: {
     readonly enable: "enable";
@@ -51,4 +59,7 @@ export declare const Msgs: {
     readonly HelmChartListingFolderContaining: "Helm Chart Listing Folder containing %s";
     readonly HelmChartListingFileYamlContent: "Helm Chart Listing File Yaml Content";
     readonly HelmChartListingFileWritten: "Helm Chart Listing File %s written.";
+    readonly KustomizeListingFolderContaining: "Kustomize Listing Folder containing %s";
+    readonly KustomizeListingFileYamlContent: "Kustomize Listing File Yaml Content";
+    readonly KustomizeListingFileWritten: "Kustomize Listing File %s written.";
 };
