@@ -66532,6 +66532,7 @@ const core = __importStar(__nccwpck_require__(7484));
 const dist_1 = __nccwpck_require__(4494);
 const path = __importStar(__nccwpck_require__(6928));
 const yaml = __importStar(__nccwpck_require__(8815));
+const fs = __importStar(__nccwpck_require__(9896));
 const child_process_1 = __nccwpck_require__(5317);
 /**
  * The main function for the action.
@@ -66546,11 +66547,11 @@ async function run() {
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
         // Check if kustomize listing file exists
         const kustomizeListingPath = path.join(GITHUB_WORKSPACE, dist_1.constants.KustomizeFiles.listingFile);
-        if (!(__nccwpck_require__(9896).existsSync)(kustomizeListingPath)) {
+        if (!fs.existsSync(kustomizeListingPath)) {
             core.setFailed(`Kustomize listing file not found at ${kustomizeListingPath}. Run kustomize-listing action first.`);
             return;
         }
-        const kustomizeListingFileContent = (__nccwpck_require__(9896).readFileSync)(kustomizeListingPath, 'utf8');
+        const kustomizeListingFileContent = fs.readFileSync(kustomizeListingPath, 'utf8');
         let kustomizeListingYamlDoc = new yaml.Document(yaml.parse(kustomizeListingFileContent));
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         core.startGroup('Kustomize Manifest Validation');

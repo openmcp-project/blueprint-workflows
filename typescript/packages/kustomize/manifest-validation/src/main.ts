@@ -2,6 +2,7 @@ import * as core from '@actions/core'
 import { utils, constants } from '../../../shared/dist'
 import * as path from 'path'
 import * as yaml from 'yaml'
+import * as fs from 'fs'
 import { execSync } from 'child_process'
 
 /**
@@ -21,14 +22,14 @@ export async function run(): Promise<void> {
     
     // Check if kustomize listing file exists
     const kustomizeListingPath = path.join(GITHUB_WORKSPACE, constants.KustomizeFiles.listingFile)
-    if (!require('fs').existsSync(kustomizeListingPath)) {
+    if (!fs.existsSync(kustomizeListingPath)) {
       core.setFailed(`Kustomize listing file not found at ${kustomizeListingPath}. Run kustomize-listing action first.`)
       return
     }
 
-    const kustomizeListingFileContent: string = require('fs').readFileSync(kustomizeListingPath, 'utf8')
+    const kustomizeListingFileContent: string = fs.readFileSync(kustomizeListingPath, 'utf8')
     let kustomizeListingYamlDoc = new yaml.Document(yaml.parse(kustomizeListingFileContent))
-    
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     core.startGroup('Kustomize Manifest Validation')
     let tableRows: any[] = []
@@ -37,7 +38,8 @@ export async function run(): Promise<void> {
       { data: 'Result', header: true },
       { data: 'Folder', header: true }
     ]
-    let summaryRawContent: string = '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>'
+    let summaryRawContent: string =
+      '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>'
 
     core.summary.addHeading('Kustomize Manifest Validation Results').addRaw(summaryRawContent)
 
@@ -54,7 +56,7 @@ export async function run(): Promise<void> {
         try {
           // Run kustomize build to validate the manifest
           core.info(`Validating Kustomize project in ${listingYamlDir}`)
-          
+
           // Check if kustomize is available
           try {
             execSync('which kustomize', { stdio: 'pipe' })
@@ -64,11 +66,11 @@ export async function run(): Promise<void> {
           }
 
           // Run kustomize build --dry-run to validate without applying
-          const result = execSync(`kustomize build ${listingYamlDir}`, { 
+          const result = execSync(`kustomize build ${listingYamlDir}`, {
             encoding: 'utf8',
             stdio: 'pipe'
           })
-          
+
           if (result && result.length > 0) {
             core.info(`✅ Kustomize manifest validation successful for ${listingYamlRelativePath}`)
             tableRows.push([item, '✅', listingYamlRelativePath])
@@ -84,11 +86,14 @@ export async function run(): Promise<void> {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
       }
     }
-    
+
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
-      .addDetails('Legend', '✅ = Manifest Validated \n ⚠️ = Empty Output \n ❌ = Validation Failed \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.KustomizeFiles.ciConfigYaml)
+      .addDetails(
+        'Legend',
+        '✅ = Manifest Validated \n ⚠️ = Empty Output \n ❌ = Validation Failed \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.KustomizeFiles.ciConfigYaml
+      )
       .write()
 
     core.endGroup()
