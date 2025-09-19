@@ -66580,15 +66580,15 @@ async function run() {
         core.startGroup('K8s Manifest Templating');
         let tableRows = [];
         let tableHeader = [
-            { data: 'Helm Chart', header: true },
-            { data: 'Helm Chart Folder', header: true },
+            { data: 'Project Name', header: true },
+            { data: 'Project Folder', header: true },
             { data: 'UID', header: true },
             { data: 'Result', header: true },
             { data: 'Manifest Folder', header: true }
         ];
-        let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
+        let summaryRawContent = '<details><summary>Found following Projects...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         /* ==================== MANIFEST GENERATION ==================== */
-        core.summary.addHeading('K8s Manifest Templating Results').addRaw(summaryRawContent);
+        core.summary.addHeading('K8s Manifest Templating Results (Helm Charts + Kustomize Projects)').addRaw(summaryRawContent);
         for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
             core.info('Processing Helm Chart UID:' + item);
             let yamlitem = shared_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
@@ -66640,16 +66640,79 @@ async function run() {
                 tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-']);
             }
         }
+        /* ==================== KUSTOMIZE MANIFEST GENERATION ==================== */
+        // Check if kustomize listing file exists and process Kustomize projects
+        const kustomizeListingPath = path.join(GITHUB_WORKSPACE, shared_1.constants.KustomizeFiles.listingFile);
+        if (fs.existsSync(kustomizeListingPath)) {
+            core.info('Found Kustomize listing file, processing Kustomize projects...');
+            const kustomizeListingFileContent = fs.readFileSync(kustomizeListingPath, 'utf8');
+            const kustomizeListingYamlDoc = new yaml.Document(yaml.parse(kustomizeListingFileContent));
+            for (const item of Object.keys(kustomizeListingYamlDoc.toJSON())) {
+                core.info('Processing Kustomize Project UID:' + item);
+                let yamlitem = shared_1.utils.unrapYamlbyKey(kustomizeListingYamlDoc, item);
+                let listingYamlDir = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.dir);
+                core.debug('Listing YAML Directory:' + listingYamlDir);
+                let listingYamlName = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.name);
+                core.debug('Listing YAML Name:' + listingYamlName);
+                let listingYamlManifestPath = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.manifestPath);
+                core.debug('Listing YAML Manifest Path:' + listingYamlManifestPath);
+                let listingYamlRelativePath = shared_1.utils.unrapYamlbyKey(yamlitem, shared_1.constants.ListingYamlKeys.relativePath);
+                core.debug('Listing YAML Relative Path:' + listingYamlRelativePath);
+                let dir = path.parse(listingYamlDir);
+                if (shared_1.utils.isFunctionEnabled(dir, shared_1.constants.Functionality.k8sManifestTemplating, true)) {
+                    core.info('K8s Manifest Templating enabled for Kustomize Project UID: ' + item);
+                    // For Kustomize, we use the same configuration approach as Helm but look for kustomize-specific options
+                    const kustomizeTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, shared_1.constants.Functionality.k8sManifestTemplating, 'kustomize-projects');
+                    core.debug('kustomizeTemplatingOptions: ' + JSON.stringify(kustomizeTemplatingOptions));
+                    // Only call .toJSON() if kustomizeTemplatingOptions is not false and has .toJSON
+                    let kustomizeTemplatingOptionsObj = kustomizeTemplatingOptions;
+                    if (kustomizeTemplatingOptions && typeof kustomizeTemplatingOptions !== 'boolean' && typeof kustomizeTemplatingOptions.toJSON === 'function') {
+                        kustomizeTemplatingOptionsObj = kustomizeTemplatingOptions.toJSON();
+                    }
+                    if (kustomizeTemplatingOptionsObj && typeof kustomizeTemplatingOptionsObj === 'object' && kustomizeTemplatingOptionsObj['default-manifest-templating'] === false) {
+                        core.info('Default manifest templating disabled for Kustomize');
+                    }
+                    else {
+                        core.info('Default manifest templating enabled for Kustomize');
+                        await runKustomizeTemplating('', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item);
+                    }
+                    // Check for additional-manifest-templating (overlays)
+                    if (kustomizeTemplatingOptionsObj && typeof kustomizeTemplatingOptionsObj === 'object' && Array.isArray(kustomizeTemplatingOptionsObj['additional-manifest-templating'])) {
+                        core.info(`Additional manifest templating (overlays) detected: ${JSON.stringify(kustomizeTemplatingOptionsObj['additional-manifest-templating'])}`);
+                        for (const additional of kustomizeTemplatingOptionsObj['additional-manifest-templating']) {
+                            let prefix = additional['prefix-manifest-folder-name'];
+                            if (!prefix || prefix === '') {
+                                core.error("Missing 'prefix-manifest-folder-name' in additional manifest templating options");
+                                continue;
+                            }
+                            const overlayPath = additional['overlay-path'];
+                            core.info(`Prefix: ${prefix}, Overlay path: ${overlayPath}`);
+                            await runKustomizeTemplating(prefix + '.', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item, overlayPath);
+                        }
+                    }
+                    else {
+                        core.info('Additional manifest templating (overlays) disabled for Kustomize');
+                    }
+                }
+                else {
+                    core.info('K8s Manifest Templating disabled for Kustomize Project UID: ' + item);
+                    tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-']);
+                }
+            }
+        }
+        else {
+            core.info('No Kustomize listing file found, skipping Kustomize projects.');
+        }
         await core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legend', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.HelmChartFiles.ciConfigYaml)
+            .addDetails('Legend', '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n ⚠️ = Empty Output \n ❌ = Build Failed \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + shared_1.constants.HelmChartFiles.ciConfigYaml + ' or ' + shared_1.constants.KustomizeFiles.ciConfigYaml)
             .write();
         let result = await shared_1.utils.Git.getInstance().status(GITHUB_WORKSPACE);
         let modifiedFolders = result.stdout.split('\n');
         if (modifiedFolders.some(str => str.includes('manifests/'))) {
             await shared_1.utils.Git.getInstance().add(manifestPath, GITHUB_WORKSPACE);
-            await shared_1.utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts', GITHUB_WORKSPACE);
+            await shared_1.utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts and Kustomize Projects', GITHUB_WORKSPACE);
             await shared_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
             core.info('Modifications committed and changes pushed to remote.');
         }
@@ -66663,6 +66726,53 @@ async function run() {
         // Fail the workflow run if an error occurs
         if (error instanceof Error)
             core.setFailed(error.message);
+    }
+}
+async function runKustomizeTemplating(prefix, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, kustomizeProjectID, overlayPath) {
+    core.debug('runKustomizeTemplating called with prefix:' + prefix + ' overlayPath:' + (overlayPath || 'base'));
+    let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
+    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
+    core.debug('Created folder: ' + path.format(manifestTargetFolder));
+    try {
+        // Check if kustomize is available
+        const { execSync } = __nccwpck_require__(5317);
+        try {
+            execSync('which kustomize', { stdio: 'pipe' });
+        }
+        catch {
+            core.setFailed('kustomize command not found. Please install kustomize: https://kubectl.docs.kubernetes.io/installation/kustomize/');
+            return;
+        }
+        // Determine the source path for kustomize build
+        const sourcePath = overlayPath ? path.join(dir.dir, overlayPath) : dir.dir;
+        // Run kustomize build and save to target folder
+        const manifestFileName = `${prefix}${listingYamlRelativePath.split('/').pop()}.yaml`;
+        const manifestFilePath = path.join(path.format(manifestTargetFolder), manifestFileName);
+        core.info(`Running kustomize build on ${sourcePath}`);
+        const result = execSync(`kustomize build ${sourcePath}`, {
+            encoding: 'utf8',
+            stdio: 'pipe'
+        });
+        if (result && result.length > 0) {
+            fs.writeFileSync(manifestFilePath, result);
+            core.info(`✅ Kustomize manifest generated: ${manifestFilePath}`);
+            tableRows.push([
+                listingYamlName,
+                listingYamlRelativePath,
+                kustomizeProjectID,
+                '✅',
+                'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
+            ]);
+        }
+        else {
+            core.warning(`⚠️ Kustomize build produced empty output for ${listingYamlRelativePath}`);
+            tableRows.push([listingYamlName, listingYamlRelativePath, kustomizeProjectID, '⚠️', '-']);
+        }
+    }
+    catch (error) {
+        core.error(`❌ Kustomize build failed for ${listingYamlRelativePath}: ${error}`);
+        tableRows.push([listingYamlName, listingYamlRelativePath, kustomizeProjectID, '❌', '-']);
     }
 }
 
@@ -66773,6 +66883,14 @@ module.exports = require("net");
 
 /***/ }),
 
+/***/ 4573:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:buffer");
+
+/***/ }),
+
 /***/ 7598:
 /***/ ((module) => {
 
@@ -66786,6 +66904,14 @@ module.exports = require("node:crypto");
 
 "use strict";
 module.exports = require("node:events");
+
+/***/ }),
+
+/***/ 1708:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:process");
 
 /***/ }),
 
@@ -68916,7 +69042,7 @@ exports.composeScalar = composeScalar;
 "use strict";
 
 
-var node_process = __nccwpck_require__(932);
+var node_process = __nccwpck_require__(1708);
 var directives = __nccwpck_require__(1342);
 var Document = __nccwpck_require__(3021);
 var errors = __nccwpck_require__(1464);
@@ -70109,7 +70235,8 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (token.source.endsWith(':'))
                     onError(token.offset + token.source.length - 1, 'BAD_ALIAS', 'Anchor ending in : is ambiguous', true);
                 anchor = token;
-                start ?? (start = token.offset);
+                if (start === null)
+                    start = token.offset;
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -70118,7 +70245,8 @@ function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIn
                 if (tag)
                     onError(token, 'MULTIPLE_TAGS', 'A node can have at most one tag');
                 tag = token;
-                start ?? (start = token.offset);
+                if (start === null)
+                    start = token.offset;
                 atNewline = false;
                 hasSpace = false;
                 reqSpace = true;
@@ -70237,7 +70365,8 @@ exports.containsNewline = containsNewline;
 
 function emptyScalarPosition(offset, before, pos) {
     if (before) {
-        pos ?? (pos = before.length);
+        if (pos === null)
+            pos = before.length;
         for (let i = pos - 1; i >= 0; --i) {
             let st = before[i];
             switch (st.type) {
@@ -70705,7 +70834,8 @@ function createNodeAnchors(doc, prefix) {
     return {
         onAnchor: (source) => {
             aliasObjects.push(source);
-            prevAnchors ?? (prevAnchors = anchorNames(doc));
+            if (!prevAnchors)
+                prevAnchors = anchorNames(doc);
             const anchor = findNewAnchor(prefix, prevAnchors);
             prevAnchors.add(anchor);
             return anchor;
@@ -70853,7 +70983,8 @@ function createNode(value, tagName, ctx) {
     if (aliasDuplicateObjects && value && typeof value === 'object') {
         ref = sourceObjects.get(value);
         if (ref) {
-            ref.anchor ?? (ref.anchor = onAnchor(value));
+            if (!ref.anchor)
+                ref.anchor = onAnchor(value);
             return new Alias.Alias(ref.anchor);
         }
         else {
@@ -71225,7 +71356,7 @@ exports.visitAsync = visit.visitAsync;
 "use strict";
 
 
-var node_process = __nccwpck_require__(932);
+var node_process = __nccwpck_require__(1708);
 
 function debug(logLevel, ...messages) {
     if (logLevel === 'debug')
@@ -71272,36 +71403,23 @@ class Alias extends Node.NodeBase {
      * Resolve the value of this alias within `doc`, finding the last
      * instance of the `source` anchor before this node.
      */
-    resolve(doc, ctx) {
-        let nodes;
-        if (ctx?.aliasResolveCache) {
-            nodes = ctx.aliasResolveCache;
-        }
-        else {
-            nodes = [];
-            visit.visit(doc, {
-                Node: (_key, node) => {
-                    if (identity.isAlias(node) || identity.hasAnchor(node))
-                        nodes.push(node);
-                }
-            });
-            if (ctx)
-                ctx.aliasResolveCache = nodes;
-        }
+    resolve(doc) {
         let found = undefined;
-        for (const node of nodes) {
-            if (node === this)
-                break;
-            if (node.anchor === this.source)
-                found = node;
-        }
+        visit.visit(doc, {
+            Node: (_key, node) => {
+                if (node === this)
+                    return visit.visit.BREAK;
+                if (node.anchor === this.source)
+                    found = node;
+            }
+        });
         return found;
     }
     toJSON(_arg, ctx) {
         if (!ctx)
             return { source: this.source };
         const { anchors, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc, ctx);
+        const source = this.resolve(doc);
         if (!source) {
             const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
             throw new ReferenceError(msg);
@@ -71982,7 +72100,6 @@ function addPairToJSMap(ctx, map, { key, value }) {
 function stringifyKey(key, jsKey, ctx) {
     if (jsKey === null)
         return '';
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     if (typeof jsKey !== 'object')
         return String(jsKey);
     if (identity.isNode(key) && ctx?.doc) {
@@ -73424,7 +73541,7 @@ exports.LineCounter = LineCounter;
 "use strict";
 
 
-var node_process = __nccwpck_require__(932);
+var node_process = __nccwpck_require__(1708);
 var cst = __nccwpck_require__(3461);
 var lexer = __nccwpck_require__(361);
 
@@ -75015,7 +75132,7 @@ exports.getTags = getTags;
 "use strict";
 
 
-var node_buffer = __nccwpck_require__(181);
+var node_buffer = __nccwpck_require__(4573);
 var Scalar = __nccwpck_require__(3301);
 var stringifyString = __nccwpck_require__(3069);
 
@@ -75068,7 +75185,8 @@ const binary = {
         else {
             throw new Error('This environment does not support writing binary tags; either Buffer or btoa is required');
         }
-        type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
+        if (!type)
+            type = Scalar.Scalar.BLOCK_LITERAL;
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
             const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
             const n = Math.ceil(str.length / lineWidth);
@@ -76018,7 +76136,7 @@ function getTagObject(tags, item) {
         tagObj = tags.find(t => t.nodeClass && obj instanceof t.nodeClass);
     }
     if (!tagObj) {
-        const name = obj?.constructor?.name ?? (obj === null ? 'null' : typeof obj);
+        const name = obj?.constructor?.name ?? typeof obj;
         throw new Error(`Tag not resolved for ${name} value`);
     }
     return tagObj;
@@ -76033,7 +76151,7 @@ function stringifyProps(node, tagObj, { anchors: anchors$1, doc }) {
         anchors$1.add(anchor);
         props.push(`&${anchor}`);
     }
-    const tag = node.tag ?? (tagObj.default ? null : tagObj.tag);
+    const tag = node.tag ? node.tag : tagObj.default ? null : tagObj.tag;
     if (tag)
         props.push(doc.directives.tagString(tag));
     return props.join(' ');
@@ -76059,7 +76177,8 @@ function stringify(item, ctx, onComment, onChompKeep) {
     const node = identity.isNode(item)
         ? item
         : ctx.doc.createNode(item, { onTagObj: o => (tagObj = o) });
-    tagObj ?? (tagObj = getTagObject(ctx.doc.schema.tags, node));
+    if (!tagObj)
+        tagObj = getTagObject(ctx.doc.schema.tags, node);
     const props = stringifyProps(node, tagObj, ctx);
     if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
@@ -76722,7 +76841,7 @@ function blockString({ comment, type, value }, ctx, onComment, onChompKeep) {
     const { blockQuote, commentString, lineWidth } = ctx.options;
     // 1. Block can't end in whitespace unless the last line is non-empty.
     // 2. Strings consisting of only whitespace are best rendered explicitly.
-    if (!blockQuote || /\n[\t ]+$/.test(value)) {
+    if (!blockQuote || /\n[\t ]+$/.test(value) || /^\s*$/.test(value)) {
         return quotedString(value, ctx);
     }
     const indent = ctx.indent ||
@@ -76816,9 +76935,10 @@ function plainString(item, ctx, onComment, onChompKeep) {
         (inFlow && /[[\]{},]/.test(value))) {
         return quotedString(value, ctx);
     }
-    if (/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
+    if (!value ||
+        /^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
         // not allowed:
-        // - '-' or '?'
+        // - empty string, '-' or '?'
         // - start with an indicator character (except [?:-]) or /[?-] /
         // - '\n ', ': ' or ' \n' anywhere
         // - '#' not preceded by a non-space char
