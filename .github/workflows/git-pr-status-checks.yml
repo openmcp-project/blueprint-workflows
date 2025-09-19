@@ -56,7 +56,7 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
             
       - id: helm-chart-listing
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@feat/kustomize"
 
       # Workflow supports only one helm repo add for now. If you need to add multiple helm repos, you need to copy and modify this workflow.
       - id: helm-repo-add
@@ -89,16 +89,16 @@ jobs:
           fi
 
       - id: helm-chart-build-dependencies
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/dep-build@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/dep-build@feat/kustomize"
       
       - id: helm-chart-linting
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/linting@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/linting@feat/kustomize"
       
       - id: helm-chart-manifest-validation
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@feat/kustomize"
 
       - id: helm-chart-version-bump
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@feat/kustomize"
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
@@ -130,10 +130,10 @@ jobs:
           ############################################################
         
       - id: helm-chart-docs
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@feat/kustomize"
       
       - id: k8s-manifest-templating
-        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@main"
+        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@feat/kustomize"
       
       - name: Get commit SHA
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
