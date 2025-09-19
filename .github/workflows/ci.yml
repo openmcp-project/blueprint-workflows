@@ -109,30 +109,30 @@ jobs:
           $PWD/helm-docs --version          
           ############################################################
 
-      - name: install-kustomize        
-        shell: bash        
-        run: |
-          set -euo pipefail
-          ############################################################
-          DEST="$RUNNER_TEMP/kustomize"
-          echo "Downloading Kustomize..."
-          mkdir -p "$DEST"
-          cd "$DEST"
+      # - name: install-kustomize        
+      #   shell: bash        
+      #   run: |
+      #     set -euo pipefail
+      #     ############################################################
+      #     DEST="$RUNNER_TEMP/kustomize"
+      #     echo "Downloading Kustomize..."
+      #     mkdir -p "$DEST"
+      #     cd "$DEST"
 
-          if ! curl -sLO "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${{ env.KUSTOMIZE_VERSION}}/kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz"; then
-            echo "!!! ERROR downloading Kustomize v${{ env.KUSTOMIZE_VERSION}} !!!"
-            exit 1
-          fi
+      #     if ! curl -sLO "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${{ env.KUSTOMIZE_VERSION}}/kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz"; then
+      #       echo "!!! ERROR downloading Kustomize v${{ env.KUSTOMIZE_VERSION}} !!!"
+      #       exit 1
+      #     fi
 
-          if ! tar -xzf "kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz" kustomize; then
-            echo "!!! ERROR unpacking kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz !!!"
-            exit 1
-          fi
-          ls -al
-          echo "$DEST" >>$GITHUB_PATH
-          echo $PWD
-          $PWD/kustomize version          
-          ############################################################
+      #     if ! tar -xzf "kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz" kustomize; then
+      #       echo "!!! ERROR unpacking kustomize_v${{ env.KUSTOMIZE_VERSION}}_linux_amd64.tar.gz !!!"
+      #       exit 1
+      #     fi
+      #     ls -al
+      #     echo "$DEST" >>$GITHUB_PATH
+      #     echo $PWD
+      #     $PWD/kustomize version          
+      #     ############################################################
         
       - id: helm-chart-docs
         uses: "./.github/actions/helm-chart/docs"         
