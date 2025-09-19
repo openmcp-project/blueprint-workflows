@@ -297,7 +297,9 @@ async function runKustomizeTemplating(
     }
 
     // Determine the source path for kustomize build
-    const sourcePath = overlayPath ? path.join(dir.dir, overlayPath) : dir.dir
+    // We need to combine the base directory with the relative path to get the actual project directory
+    const projectPath = path.join(GITHUB_WORKSPACE, listingYamlRelativePath)
+    const sourcePath = overlayPath ? path.join(projectPath, overlayPath) : projectPath
 
     // Run kustomize build and save to target folder
     const manifestFileName = `${prefix}${listingYamlRelativePath.split('/').pop()}.yaml`
