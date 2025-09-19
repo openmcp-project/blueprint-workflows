@@ -184,7 +184,7 @@ export async function run(): Promise<void> {
 
         if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
           core.info('K8s Manifest Templating enabled for Kustomize Project UID: ' + item)
-          
+
           // For Kustomize, we use the same configuration approach as Helm but look for kustomize-specific options
           const kustomizeTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'kustomize-projects')
           core.debug('kustomizeTemplatingOptions: ' + JSON.stringify(kustomizeTemplatingOptions))
@@ -199,20 +199,15 @@ export async function run(): Promise<void> {
             core.info('Default manifest templating disabled for Kustomize')
           } else {
             core.info('Default manifest templating enabled for Kustomize')
-            await runKustomizeTemplating(
-              '',
-              GITHUB_WORKSPACE,
-              listingYamlManifestPath,
-              listingYamlRelativePath,
-              listingYamlName,
-              dir,
-              tableRows,
-              item
-            )
+            await runKustomizeTemplating('', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item)
           }
 
           // Check for additional-manifest-templating (overlays)
-          if (kustomizeTemplatingOptionsObj && typeof kustomizeTemplatingOptionsObj === 'object' && Array.isArray(kustomizeTemplatingOptionsObj['additional-manifest-templating'])) {
+          if (
+            kustomizeTemplatingOptionsObj &&
+            typeof kustomizeTemplatingOptionsObj === 'object' &&
+            Array.isArray(kustomizeTemplatingOptionsObj['additional-manifest-templating'])
+          ) {
             core.info(`Additional manifest templating (overlays) detected: ${JSON.stringify(kustomizeTemplatingOptionsObj['additional-manifest-templating'])}`)
             for (const additional of kustomizeTemplatingOptionsObj['additional-manifest-templating']) {
               let prefix = additional['prefix-manifest-folder-name']
@@ -222,17 +217,7 @@ export async function run(): Promise<void> {
               }
               const overlayPath = additional['overlay-path']
               core.info(`Prefix: ${prefix}, Overlay path: ${overlayPath}`)
-              await runKustomizeTemplating(
-                prefix + '.',
-                GITHUB_WORKSPACE,
-                listingYamlManifestPath,
-                listingYamlRelativePath,
-                listingYamlName,
-                dir,
-                tableRows,
-                item,
-                overlayPath
-              )
+              await runKustomizeTemplating(prefix + '.', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item, overlayPath)
             }
           } else {
             core.info('Additional manifest templating (overlays) disabled for Kustomize')
@@ -251,7 +236,10 @@ export async function run(): Promise<void> {
       .addBreak()
       .addDetails(
         'Legend',
-        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n ⚠️ = Empty Output \n ❌ = Build Failed \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + constants.HelmChartFiles.ciConfigYaml + ' or ' + constants.KustomizeFiles.ciConfigYaml
+        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n ⚠️ = Empty Output \n ❌ = Build Failed \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' +
+          constants.HelmChartFiles.ciConfigYaml +
+          ' or ' +
+          constants.KustomizeFiles.ciConfigYaml
       )
       .write()
 
