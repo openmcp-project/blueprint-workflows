@@ -69393,7 +69393,7 @@ async function run() {
             let listingItem = dist_1.utils.unrapYamlbyKey(kustomizeListingYamlDoc, key);
             let dir = dist_1.utils.unrapYamlbyKey(listingItem, 'dir');
             let relativePath = dist_1.utils.unrapYamlbyKey(listingItem, 'relativePath');
-            let projectName = dist_1.utils.unrapYamlbyKey(listingItem, 'name', path.basename(relativePath));
+            let projectName = path.basename(relativePath);
             core.debug('dir: ' + key + ' relativePath: ' + relativePath + ' projectName: ' + projectName);
             // Check if version bump is enabled for this kustomize project
             if (dist_1.utils.isFunctionEnabled(path.parse(dir), dist_1.constants.Functionality.kustomizeVersionBump, true)) {
