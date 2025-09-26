@@ -115,7 +115,7 @@ export async function run(): Promise<void> {
       let listingItem = utils.unrapYamlbyKey(kustomizeListingYamlDoc, key)
       let dir = utils.unrapYamlbyKey(listingItem, 'dir')
       let relativePath = utils.unrapYamlbyKey(listingItem, 'relativePath')
-      let projectName = utils.unrapYamlbyKey(listingItem, 'name', path.basename(relativePath))
+      let projectName = path.basename(relativePath)
 
       core.debug('dir: ' + key + ' relativePath: ' + relativePath + ' projectName: ' + projectName)
 
