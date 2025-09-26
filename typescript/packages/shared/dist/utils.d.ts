@@ -64,7 +64,7 @@ export declare class Kustomize {
     /**
      * Reads or creates a .version file for a kustomize project
      * @param dir - Directory path
-     * @returns The version string from the .version file, or "0.0.1" if file doesn't exist
+     * @returns The version string from the .version file, or "0.0.0" if file doesn't exist
      */
     readOrCreateVersionFile(dir: string): string;
     /**

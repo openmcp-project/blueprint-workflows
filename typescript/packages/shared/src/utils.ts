@@ -467,7 +467,7 @@ export class Kustomize {
    */
   public readOrCreateVersionFile(dir: string): string {
     const versionFilePath = path.join(dir, '.version')
-    
+
     if (fs.existsSync(versionFilePath)) {
       const versionContent = fs.readFileSync(versionFilePath, { encoding: 'utf8' }).trim()
       return versionContent || '0.0.0'

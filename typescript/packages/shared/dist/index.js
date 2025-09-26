@@ -30339,18 +30339,18 @@ class Kustomize {
     /**
      * Reads or creates a .version file for a kustomize project
      * @param dir - Directory path
-     * @returns The version string from the .version file, or "0.0.1" if file doesn't exist
+     * @returns The version string from the .version file, or "0.0.0" if file doesn't exist
      */
     readOrCreateVersionFile(dir) {
         const versionFilePath = path.join(dir, '.version');
         if (fs.existsSync(versionFilePath)) {
             const versionContent = fs.readFileSync(versionFilePath, { encoding: 'utf8' }).trim();
-            return versionContent || '0.0.1';
+            return versionContent || '0.0.0';
         }
         else {
-            // Create .version file with default version 0.0.1
-            fs.writeFileSync(versionFilePath, '0.0.1', { encoding: 'utf8' });
-            return '0.0.1';
+            // Create .version file with default version 0.0.0
+            fs.writeFileSync(versionFilePath, '0.0.0', { encoding: 'utf8' });
+            return '0.0.0';
         }
     }
     /**
