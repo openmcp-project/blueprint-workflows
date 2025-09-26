@@ -55,6 +55,25 @@ export declare class HelmChart {
     readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any;
     generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]): Promise<string>;
 }
+export declare class Kustomize {
+    private static instance;
+    private constructor();
+    static getInstance(): Kustomize;
+    exec(commandLine: string, args?: string[], execOptions?: exec2.ExecOptions): Promise<exec2.ExecOutput>;
+    getListingFileContent(filePath: path.FormatInputPathObject): string;
+    /**
+     * Reads or creates a .version file for a kustomize project
+     * @param dir - Directory path
+     * @returns The version string from the .version file, or "0.0.1" if file doesn't exist
+     */
+    readOrCreateVersionFile(dir: string): string;
+    /**
+     * Writes version to .version file
+     * @param dir - Directory path
+     * @param version - Version string to write
+     */
+    writeVersionFile(dir: string, version: string): void;
+}
 export declare class CustomError extends Error {
     constructor(message: string);
 }

@@ -49,7 +49,8 @@ export const Functionality = {
   helmChartVersionBump: 'helm-chart-version-bump',
   helmChartDependencyUpdate: 'helm-chart-dependency-update',
   k8sManifestTemplating: 'k8s-manifest-templating',
-  kustomizeListing: 'kustomize-listing'
+  kustomizeListing: 'kustomize-listing',
+  kustomizeVersionBump: 'kustomize-version-bump'
 }
 export const Yaml = {
   enable: 'enable'

@@ -43,6 +43,7 @@ export declare const Functionality: {
     helmChartDependencyUpdate: string;
     k8sManifestTemplating: string;
     kustomizeListing: string;
+    kustomizeVersionBump: string;
 };
 export declare const Yaml: {
     readonly enable: "enable";
