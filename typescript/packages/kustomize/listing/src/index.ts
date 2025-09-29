@@ -107,12 +107,12 @@ export async function run(): Promise<void> {
 
       // Ensure projectName is a string
       const projectNameStr = String(projectName)
-      
+
       // Create a unique key by using the relative path with slashes replaced by underscores
       // This prevents duplicate keys when multiple projects have the same folder name
       const relativePath = path.relative(GITHUB_WORKSPACE, kustomizeDir)
       let kustomizeListingYamlDocKeyValue = relativePath.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '_')
-      
+
       // Ensure the key doesn't start with a number (YAML requirement)
       if (/^\d/.test(kustomizeListingYamlDocKeyValue)) {
         kustomizeListingYamlDocKeyValue = 'kustomize_' + kustomizeListingYamlDocKeyValue
