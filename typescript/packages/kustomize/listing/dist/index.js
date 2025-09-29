@@ -66688,7 +66688,14 @@ async function run() {
             let projectName = path.basename(kustomizeDir);
             // Ensure projectName is a string
             const projectNameStr = String(projectName);
-            let kustomizeListingYamlDocKeyValue = new String().concat(path.basename(kustomizeDir), '__', projectNameStr);
+            // Create a unique key by using the relative path with slashes replaced by underscores
+            // This prevents duplicate keys when multiple projects have the same folder name
+            const relativePath = path.relative(GITHUB_WORKSPACE, kustomizeDir);
+            let kustomizeListingYamlDocKeyValue = relativePath.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '_');
+            // Ensure the key doesn't start with a number (YAML requirement)
+            if (/^\d/.test(kustomizeListingYamlDocKeyValue)) {
+                kustomizeListingYamlDocKeyValue = 'kustomize_' + kustomizeListingYamlDocKeyValue;
+            }
             let kustomizeListingYamlItem = kustomizeListingYamlDoc.createPair(kustomizeListingYamlDocKeyValue, {
                 dir: kustomizeDir,
                 name: projectNameStr,
