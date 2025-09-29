@@ -66633,8 +66633,42 @@ async function run() {
         const kustomizationYamlDirs = dist_1.utils.lookup(startDir, dist_1.constants.KustomizeFiles.KustomizationYaml);
         const kustomizationYmlDirs = dist_1.utils.lookup(startDir, dist_1.constants.KustomizeFiles.KustomizationYml);
         // Combine both results and remove duplicates
-        const kustomizeDirs = [...new Set([...kustomizationYamlDirs, ...kustomizationYmlDirs])];
-        core.debug('Directories containing kustomization files:' + kustomizeDirs.map((item) => `\n- ${item}`));
+        const allKustomizeDirs = [...new Set([...kustomizationYamlDirs, ...kustomizationYmlDirs])];
+        // Filter out kustomization files that are part of Helm charts
+        const kustomizeDirs = allKustomizeDirs.filter(kustomizeDir => {
+            // Check if this kustomization file is in a templates directory or subdirectory of templates
+            let currentPath = kustomizeDir;
+            let foundTemplatesDir = false;
+            // Walk up the directory tree from the kustomization file location
+            while (currentPath !== startDir && currentPath !== path.dirname(currentPath)) {
+                const currentBaseName = path.basename(currentPath);
+                // If we find a directory named "templates" in the path
+                if (currentBaseName === 'templates') {
+                    // Check if any parent directory has Chart.yaml
+                    let searchPath = path.dirname(currentPath); // Start from parent of templates directory
+                    while (searchPath !== startDir && searchPath !== path.dirname(searchPath)) {
+                        const chartYamlPath = path.join(searchPath, dist_1.constants.HelmChartFiles.Chartyaml);
+                        if (fs.existsSync(chartYamlPath)) {
+                            foundTemplatesDir = true;
+                            break;
+                        }
+                        searchPath = path.dirname(searchPath);
+                    }
+                    if (foundTemplatesDir) {
+                        break;
+                    }
+                }
+                currentPath = path.dirname(currentPath);
+            }
+            // If we found a Helm chart templates directory, exclude this kustomization file
+            if (foundTemplatesDir) {
+                core.debug(`Excluding kustomization file in Helm chart templates: ${kustomizeDir}`);
+                return false;
+            }
+            return true;
+        });
+        core.debug('All directories containing kustomization files:' + allKustomizeDirs.map((item) => `\n- ${item}`));
+        core.debug('Filtered directories (excluding Helm chart templates):' + kustomizeDirs.map((item) => `\n- ${item}`));
         core.endGroup();
         core.startGroup(util.format(dist_1.constants.Msgs.KustomizeListingFolderContaining, 'kustomization files'));
         const kustomizeListingYamlDoc = new yaml.Document({});
