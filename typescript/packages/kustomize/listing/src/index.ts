@@ -43,16 +43,16 @@ export async function run(): Promise<void> {
       // Check if this kustomization file is in a templates directory or subdirectory of templates
       let currentPath = kustomizeDir
       let foundInHelmChartDir = false
-      
+
       // Walk up the directory tree from the kustomization file location
       while (currentPath !== startDir && currentPath !== path.dirname(currentPath)) {
         const currentBaseName = path.basename(currentPath)
-        
+
         // If we find a directory named "templates" in the path
         if (currentBaseName === 'templates') {
           // Check if any parent directory has Chart.yaml
           let searchPath = path.dirname(currentPath)
-          
+
           //while (searchPath !== startDir && searchPath !== path.dirname(searchPath)) {
           const chartYamlPath = path.join(searchPath, constants.HelmChartFiles.Chartyaml)
           if (fs.existsSync(chartYamlPath)) {
@@ -61,21 +61,21 @@ export async function run(): Promise<void> {
           }
           //  searchPath = path.dirname(searchPath)
           //}
-          
+
           // if (foundTemplatesDir) {
           //   break
           // }
         }
-        
+
         currentPath = path.dirname(currentPath)
       }
-      
+
       // If we found a Helm chart templates directory, exclude this kustomization file
       if (foundInHelmChartDir) {
         core.debug(`Excluding kustomization file in Helm chart templates: ${kustomizeDir}`)
         return false
       }
-      
+
       return true
     })
 
