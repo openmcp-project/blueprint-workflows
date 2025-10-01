@@ -69381,7 +69381,7 @@ async function run() {
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
         core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
         console.log('Looking for ' + dist_1.constants.HelmChartFiles.Chartyaml + ' files');
-        let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+        let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + ' || true"';
         let resultFiles = await utilsHelmChart.exec(cmdChartSearch, [], { cwd: GITHUB_WORKSPACE });
         const filesOnBaseBranch = resultFiles.stdout.split(/\r?\n/);
         for (const file of filesOnBaseBranch) {

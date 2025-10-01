@@ -98,7 +98,14 @@ export async function run(): Promise<void> {
     core.summary.addHeading('Kustomize Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)
 
     console.log('Looking for kustomization files')
-    let cmdKustomizeSearch: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep -E \'(' + constants.KustomizeFiles.KustomizationYaml + '|' + constants.KustomizeFiles.KustomizationYml + ')\' || true"'
+    let cmdKustomizeSearch: string =
+      '/bin/bash -c "git ls-tree -r \"origin/' +
+      BASE_BRANCH_NAME +
+      '\" --name-only | grep -E \'(' +
+      constants.KustomizeFiles.KustomizationYaml +
+      '|' +
+      constants.KustomizeFiles.KustomizationYml +
+      ')\' || true"'
     let resultFiles = await utilsKustomize.exec(cmdKustomizeSearch, [], { cwd: GITHUB_WORKSPACE })
     const filesOnBaseBranch: string[] = resultFiles.stdout.split(/\r?\n/)
 

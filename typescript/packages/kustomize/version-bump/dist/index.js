@@ -69378,13 +69378,13 @@ async function run() {
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
         core.summary.addHeading('Kustomize Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
         console.log('Looking for kustomization files');
-        let cmdKustomizeSearch = '/bin/bash -c "git ls-tree -r \\"origin/' +
+        let cmdKustomizeSearch = '/bin/bash -c "git ls-tree -r \"origin/' +
             BASE_BRANCH_NAME +
-            '\\" --name-only | grep -E \'(' +
+            '\" --name-only | grep -E \'(' +
             dist_1.constants.KustomizeFiles.KustomizationYaml +
             '|' +
             dist_1.constants.KustomizeFiles.KustomizationYml +
-            ')\'"';
+            ')\' || true"';
         let resultFiles = await utilsKustomize.exec(cmdKustomizeSearch, [], { cwd: GITHUB_WORKSPACE });
         const filesOnBaseBranch = resultFiles.stdout.split(/\r?\n/);
         // Process each modified kustomize project
@@ -69407,10 +69407,10 @@ async function run() {
                     // Try to get .version file from base branch
                     let cmdShowVersion = '';
                     if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
-                        cmdShowVersion = '/bin/bash -c "git show \\"upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\\" 2>/dev/null || echo \\"0.0.1\\""';
+                        cmdShowVersion = '/bin/bash -c "git show \"upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\" 2>/dev/null || echo \"0.0.1\""';
                     }
                     else {
-                        cmdShowVersion = '/bin/bash -c "git show \\"origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\\" 2>/dev/null || echo \\"0.0.1\\""';
+                        cmdShowVersion = '/bin/bash -c "git show \"origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\" 2>/dev/null || echo \"0.0.1\""';
                     }
                     core.debug(cmdShowVersion);
                     let versionResult = await utilsKustomize.exec(cmdShowVersion, [], { cwd: GITHUB_WORKSPACE });
