@@ -134,9 +134,9 @@ export async function run(): Promise<void> {
           // Try to get .version file from base branch
           let cmdShowVersion: string = ''
           if (TARGET_GIT_REPO_URL !== SOURCE_GIT_REPO_URL) {
-            cmdShowVersion = '/bin/bash -c "git show \\"upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\\" 2>/dev/null || echo \\"0.0.1\\""'
+            cmdShowVersion = '/bin/bash -c "git show \"upstream/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\" 2>/dev/null || echo \"0.0.1\""'
           } else {
-            cmdShowVersion = '/bin/bash -c "git show \\"origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\\" 2>/dev/null || echo \\"0.0.1\\""'
+            cmdShowVersion = '/bin/bash -c "git show \"origin/' + BASE_BRANCH_NAME + ':' + relativePath + '/.version\" 2>/dev/null || echo \"0.0.1\""'
           }
 
           core.debug(cmdShowVersion)
