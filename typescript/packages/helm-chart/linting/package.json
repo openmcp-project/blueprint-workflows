@@ -74,7 +74,7 @@
     "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "@github/local-action": "^5.0.0",
+    "@github/local-action": "^6.0.0",
     "@jest/globals": "^30.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.13.9",
