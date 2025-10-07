@@ -14,6 +14,11 @@ This directory contains TypeScript packages for working with Kustomize projects 
 - **Functionality**: Runs `kustomize build` on each discovered project to ensure they generate valid Kubernetes manifests
 - **Dependencies**: Requires `kustomize` CLI tool to be installed
 
+### kustomize/version-bump
+- **Purpose**: Automatically bumps versions of Kustomize projects based on changes
+- **Functionality**: Manages `.version` files, compares versions between branches, and bumps patch versions as needed
+- **Integration**: Works with GitHub Actions to commit and push
+
 ## Architecture
 
 These packages follow the same pattern as the existing helm-chart packages:
@@ -24,8 +29,9 @@ These packages follow the same pattern as the existing helm-chart packages:
 
 ## Usage
 
-1. **kustomize-listing**: Run first to discover all Kustomize projects
-2. **kustomize-manifest-validation**: Run after listing to validate discovered projects
+1. **listing**: Run first to discover all Kustomize projects
+2. **manifest-validation**: Run after listing to validate discovered projects
+3. **version-bump**: Run last to update version if needed
 
 ## Dependencies
 
