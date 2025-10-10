@@ -103,5 +103,7 @@ __tests__/runner/*
 
 **/*/helm-chart-listing.yaml
 helm-chart-listing.yaml
+**/*/kustomize-listing.yaml
+kustomize-listing.yaml
 .github/summary.html
 **/*/GITHUB_STEP_SUMMARY.html

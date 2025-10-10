@@ -1,0 +1,11 @@
+name: 'Kustomize Listing'
+description: 'List all Kustomize Projects to be worked on.'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'layers'
+  color: 'blue'
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/kustomize/listing/dist/index.js

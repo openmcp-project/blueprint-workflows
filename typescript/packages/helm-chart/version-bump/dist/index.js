@@ -58120,7 +58120,7 @@ module.exports = {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.versionBumpIgnoredFiles = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
+exports.Msgs = exports.ErrorMsgs = exports.HelmChartDoc = exports.Yaml = exports.Functionality = exports.github = exports.envvars = exports.versionBumpIgnoredFiles = exports.KustomizeFiles = exports.HelmChartFiles = exports.ListingYamlKeys = void 0;
 exports.ListingYamlKeys = {
     dir: 'dir',
     name: 'name',
@@ -58135,6 +58135,13 @@ exports.HelmChartFiles = {
     valuesYaml: 'values.yaml',
     ReadmeMd: 'README.md',
     listingFile: 'helm-chart-listing.yaml'
+};
+exports.KustomizeFiles = {
+    KustomizationYaml: 'kustomization.yaml',
+    KustomizationYml: 'kustomization.yml',
+    ciConfigYaml: '.ci.config.yaml',
+    ReadmeMd: 'README.md',
+    listingFile: 'kustomize-listing.yaml'
 };
 exports.versionBumpIgnoredFiles = ['.ci.config.yaml'];
 exports.envvars = {
@@ -58158,7 +58165,9 @@ exports.Functionality = {
     helmChartValidation: 'helm-chart-validation',
     helmChartVersionBump: 'helm-chart-version-bump',
     helmChartDependencyUpdate: 'helm-chart-dependency-update',
-    k8sManifestTemplating: 'k8s-manifest-templating'
+    k8sManifestTemplating: 'k8s-manifest-templating',
+    kustomizeListing: 'kustomize-listing',
+    kustomizeVersionBump: 'kustomize-version-bump'
 };
 exports.Yaml = {
     enable: 'enable'
@@ -58174,7 +58183,10 @@ exports.ErrorMsgs = {
 exports.Msgs = {
     HelmChartListingFolderContaining: 'Helm Chart Listing Folder containing %s',
     HelmChartListingFileYamlContent: 'Helm Chart Listing File Yaml Content',
-    HelmChartListingFileWritten: 'Helm Chart Listing File %s written.'
+    HelmChartListingFileWritten: 'Helm Chart Listing File %s written.',
+    KustomizeListingFolderContaining: 'Kustomize Listing Folder containing %s',
+    KustomizeListingFileYamlContent: 'Kustomize Listing File Yaml Content',
+    KustomizeListingFileWritten: 'Kustomize Listing File %s written.'
 };
 
 
@@ -58270,7 +58282,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.CustomError = exports.HelmChart = exports.Git = exports.removeDuplicatesFromStringArray = void 0;
+exports.CustomError = exports.Kustomize = exports.HelmChart = exports.Git = exports.removeDuplicatesFromStringArray = void 0;
 exports.assertNullOrEmpty = assertNullOrEmpty;
 exports.checkRequiredInput = checkRequiredInput;
 exports.lookup = lookup;
@@ -58645,6 +58657,76 @@ class HelmChart {
     }
 }
 exports.HelmChart = HelmChart;
+class Kustomize {
+    static instance;
+    constructor() { }
+    static getInstance() {
+        if (this.instance) {
+            return this.instance;
+        }
+        this.instance = new Kustomize();
+        return this.instance;
+    }
+    async exec(commandLine, args, execOptions) {
+        let stdOut = '';
+        let stdErr = '';
+        let options = {
+            silent: false,
+            failOnStdErr: false
+        };
+        if (execOptions !== undefined) {
+            options = { ...options, ...execOptions };
+        }
+        options.listeners = {
+            stdout: (data) => {
+                stdOut += data.toString();
+            },
+            stderr: (data) => {
+                stdErr += data.toString();
+            }
+        };
+        core.debug('commandLine: `' + commandLine + '` args: `' + args?.join(' ') + '`');
+        let exitCode = await exec2.exec(commandLine, args, options);
+        core.debug('exitCode: `' + exitCode + '` stdout: "' + stdOut + '" stderror: "' + stdErr + '"');
+        return { exitCode: exitCode, stdout: stdOut, stderr: stdErr };
+    }
+    getListingFileContent(filePath) {
+        const filePathWet = path.join(path.format(filePath), constants.KustomizeFiles.listingFile);
+        if (fs.existsSync(filePathWet)) {
+            return fs.readFileSync(filePathWet, { encoding: 'utf8' });
+        }
+        else {
+            throw new Error('File ' + filePathWet + ' not found!');
+        }
+    }
+    /**
+     * Reads or creates a .version file for a kustomize project
+     * @param dir - Directory path
+     * @returns The version string from the .version file, or "0.0.0" if file doesn't exist
+     */
+    readOrCreateVersionFile(dir) {
+        const versionFilePath = path.join(dir, '.version');
+        if (fs.existsSync(versionFilePath)) {
+            const versionContent = fs.readFileSync(versionFilePath, { encoding: 'utf8' }).trim();
+            return versionContent || '0.0.0';
+        }
+        else {
+            // Create .version file with default version 0.0.0
+            fs.writeFileSync(versionFilePath, '0.0.0', { encoding: 'utf8' });
+            return '0.0.0';
+        }
+    }
+    /**
+     * Writes version to .version file
+     * @param dir - Directory path
+     * @param version - Version string to write
+     */
+    writeVersionFile(dir, version) {
+        const versionFilePath = path.join(dir, '.version');
+        fs.writeFileSync(versionFilePath, version, { encoding: 'utf8' });
+    }
+}
+exports.Kustomize = Kustomize;
 class CustomError extends Error {
     constructor(message) {
         super(message); // Call the constructor of the base class `Error`
@@ -69318,7 +69400,7 @@ async function run() {
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
         core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
         console.log('Looking for ' + dist_1.constants.HelmChartFiles.Chartyaml + ' files');
-        let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + '"';
+        let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + ' || true"';
         let resultFiles = await utilsHelmChart.exec(cmdChartSearch, [], { cwd: GITHUB_WORKSPACE });
         const filesOnBaseBranch = resultFiles.stdout.split(/\r?\n/);
         for (const file of filesOnBaseBranch) {

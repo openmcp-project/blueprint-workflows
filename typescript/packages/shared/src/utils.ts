@@ -411,6 +411,84 @@ export class HelmChart {
   }
 }
 
+export class Kustomize {
+  private static instance: Kustomize
+
+  private constructor() {}
+
+  static getInstance() {
+    if (this.instance) {
+      return this.instance
+    }
+    this.instance = new Kustomize()
+    return this.instance
+  }
+
+  public async exec(commandLine: string, args?: string[], execOptions?: exec2.ExecOptions): Promise<exec2.ExecOutput> {
+    let stdOut = ''
+    let stdErr = ''
+
+    let options: exec2.ExecOptions = {
+      silent: false,
+      failOnStdErr: false
+    }
+    if (execOptions !== undefined) {
+      options = { ...options, ...execOptions }
+    }
+    options.listeners = {
+      stdout: (data: Buffer) => {
+        stdOut += data.toString()
+      },
+      stderr: (data: Buffer) => {
+        stdErr += data.toString()
+      }
+    }
+    core.debug('commandLine: `' + commandLine + '` args: `' + args?.join(' ') + '`')
+    let exitCode = await exec2.exec(commandLine, args, options)
+    core.debug('exitCode: `' + exitCode + '` stdout: "' + stdOut + '" stderror: "' + stdErr + '"')
+
+    return { exitCode: exitCode, stdout: stdOut, stderr: stdErr }
+  }
+
+  public getListingFileContent(filePath: path.FormatInputPathObject): string {
+    const filePathWet = path.join(path.format(filePath), constants.KustomizeFiles.listingFile)
+
+    if (fs.existsSync(filePathWet)) {
+      return fs.readFileSync(filePathWet, { encoding: 'utf8' })
+    } else {
+      throw new Error('File ' + filePathWet + ' not found!')
+    }
+  }
+
+  /**
+   * Reads or creates a .version file for a kustomize project
+   * @param dir - Directory path
+   * @returns The version string from the .version file, or "0.0.0" if file doesn't exist
+   */
+  public readOrCreateVersionFile(dir: string): string {
+    const versionFilePath = path.join(dir, '.version')
+
+    if (fs.existsSync(versionFilePath)) {
+      const versionContent = fs.readFileSync(versionFilePath, { encoding: 'utf8' }).trim()
+      return versionContent || '0.0.0'
+    } else {
+      // Create .version file with default version 0.0.0
+      fs.writeFileSync(versionFilePath, '0.0.0', { encoding: 'utf8' })
+      return '0.0.0'
+    }
+  }
+
+  /**
+   * Writes version to .version file
+   * @param dir - Directory path
+   * @param version - Version string to write
+   */
+  public writeVersionFile(dir: string, version: string): void {
+    const versionFilePath = path.join(dir, '.version')
+    fs.writeFileSync(versionFilePath, version, { encoding: 'utf8' })
+  }
+}
+
 export class CustomError extends Error {
   constructor(message: string) {
     super(message) // Call the constructor of the base class `Error`

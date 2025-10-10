@@ -1,6 +1,6 @@
 {
   "name": "k8s-manifest-templating",
-  "description": "GitHub Actions TypeScript to template k8s manifests",
+  "description": "GitHub Actions TypeScript to template k8s manifests from Helm Charts and Kustomize projects",
   "version": "0.0.0",
   "private": true,
   "homepage": "https://github.com/openmcp-project/blueprint-workflows",
@@ -14,7 +14,11 @@
   "keywords": [
     "actions",
     "node",
-    "setup"
+    "setup",
+    "helm",
+    "kustomize",
+    "kubernetes",
+    "manifests"
   ],
   "exports": {
     ".": "./dist/index.js"
