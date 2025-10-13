@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ESNEXT",
+    "module": "NodeNext",
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "composite": true,
+    "strict": true,
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true
+  },
+  "exclude": [
+    "manifest-validation/coverage",
+    "manifest-validation/dist",
+    "./node_modules",
+    "manifest-validation/__tests__",
+    "./coverage",
+    "./__test__",
+    "./dist/**/*"
+  ],
+  "references": [
+    {
+      "path": "../../shared"
+    }
+  ]
+}

@@ -32,7 +32,7 @@ async function runHelmTemplating(
     options = utilsHelmChart.readPipelineFeatureOptions(dir, constants.Functionality.k8sManifestTemplating)
   }
 
-  if (utils.unrapYamlbyKey(options, '--skip-crds', false)) {
+  if (utils.unrapYamlbyKey(options as any, '--skip-crds', false)) {
     helmOptions.push('--skip-crds')
   }
 
@@ -75,20 +75,20 @@ export async function run(): Promise<void> {
 
     let tableRows = []
     let tableHeader = [
-      { data: 'Helm Chart', header: true },
-      { data: 'Helm Chart Folder', header: true },
+      { data: 'Project Name', header: true },
+      { data: 'Project Folder', header: true },
       { data: 'UID', header: true },
       { data: 'Result', header: true },
       { data: 'Manifest Folder', header: true }
     ]
-    let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
+    let summaryRawContent: string = '<details><summary>Found following Projects...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
 
     /* ==================== MANIFEST GENERATION ==================== */
-    core.summary.addHeading('K8s Manifest Templating Results').addRaw(summaryRawContent)
+    core.summary.addHeading('K8s Manifest Templating Results (Helm Charts + Kustomize Projects)').addRaw(summaryRawContent)
 
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
       core.info('Processing Helm Chart UID:' + item)
-      let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
+      let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc as any, item)
       let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
       core.debug('Listing YAML Directory:' + listingYamlDir)
       let listingYamlName = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.name)
@@ -160,12 +160,86 @@ export async function run(): Promise<void> {
         tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-'])
       }
     }
+
+    /* ==================== KUSTOMIZE MANIFEST GENERATION ==================== */
+    // Check if kustomize listing file exists and process Kustomize projects
+    const kustomizeListingPath = path.join(GITHUB_WORKSPACE, constants.KustomizeFiles.listingFile)
+    if (fs.existsSync(kustomizeListingPath)) {
+      core.info('Found Kustomize listing file, processing Kustomize projects...')
+      const kustomizeListingFileContent = fs.readFileSync(kustomizeListingPath, 'utf8')
+      const kustomizeListingYamlDoc = new yaml.Document(yaml.parse(kustomizeListingFileContent))
+
+      for (const item of Object.keys(kustomizeListingYamlDoc.toJSON())) {
+        core.info('Processing Kustomize Project UID:' + item)
+        let yamlitem = utils.unrapYamlbyKey(kustomizeListingYamlDoc as any, item)
+        let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
+        core.debug('Listing YAML Directory:' + listingYamlDir)
+        let listingYamlName = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.name)
+        core.debug('Listing YAML Name:' + listingYamlName)
+        let listingYamlManifestPath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.manifestPath)
+        core.debug('Listing YAML Manifest Path:' + listingYamlManifestPath)
+        let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
+        core.debug('Listing YAML Relative Path:' + listingYamlRelativePath)
+        let dir: path.ParsedPath = path.parse(listingYamlDir)
+
+        if (utils.isFunctionEnabled(dir, constants.Functionality.k8sManifestTemplating, true)) {
+          core.info('K8s Manifest Templating enabled for Kustomize Project UID: ' + item)
+
+          // For Kustomize, we use the same configuration approach as Helm but look for kustomize-specific options
+          const kustomizeTemplatingOptions = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'kustomize-projects')
+          core.debug('kustomizeTemplatingOptions: ' + JSON.stringify(kustomizeTemplatingOptions))
+
+          // Only call .toJSON() if kustomizeTemplatingOptions is not false and has .toJSON
+          let kustomizeTemplatingOptionsObj: any = kustomizeTemplatingOptions
+          if (kustomizeTemplatingOptions && typeof kustomizeTemplatingOptions !== 'boolean' && typeof kustomizeTemplatingOptions.toJSON === 'function') {
+            kustomizeTemplatingOptionsObj = kustomizeTemplatingOptions.toJSON()
+          }
+
+          if (kustomizeTemplatingOptionsObj && typeof kustomizeTemplatingOptionsObj === 'object' && kustomizeTemplatingOptionsObj['default-manifest-templating'] === false) {
+            core.info('Default manifest templating disabled for Kustomize')
+          } else {
+            core.info('Default manifest templating enabled for Kustomize')
+            await runKustomizeTemplating('', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item)
+          }
+
+          // Check for additional-manifest-templating (overlays)
+          if (
+            kustomizeTemplatingOptionsObj &&
+            typeof kustomizeTemplatingOptionsObj === 'object' &&
+            Array.isArray(kustomizeTemplatingOptionsObj['additional-manifest-templating'])
+          ) {
+            core.info(`Additional manifest templating (overlays) detected: ${JSON.stringify(kustomizeTemplatingOptionsObj['additional-manifest-templating'])}`)
+            for (const additional of kustomizeTemplatingOptionsObj['additional-manifest-templating']) {
+              let prefix = additional['prefix-manifest-folder-name']
+              if (!prefix || prefix === '') {
+                core.error("Missing 'prefix-manifest-folder-name' in additional manifest templating options")
+                continue
+              }
+              const overlayPath = additional['overlay-path']
+              core.info(`Prefix: ${prefix}, Overlay path: ${overlayPath}`)
+              await runKustomizeTemplating(prefix + '.', GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, item, overlayPath)
+            }
+          } else {
+            core.info('Additional manifest templating (overlays) disabled for Kustomize')
+          }
+        } else {
+          core.info('K8s Manifest Templating disabled for Kustomize Project UID: ' + item)
+          tableRows.push([listingYamlName, listingYamlRelativePath, item, ':heavy_exclamation_mark: Disabled', '-'])
+        }
+      }
+    } else {
+      core.info('No Kustomize listing file found, skipping Kustomize projects.')
+    }
+
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
       .addDetails(
         'Legend',
-        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' + constants.HelmChartFiles.ciConfigYaml
+        '✅ = K8s Manifest Templated and moved to ./manifest/* folder \n ⚠️ = Empty Output \n ❌ = Build Failed \n :heavy_exclamation_mark: = K8s Manifest Templating disabled by ' +
+          constants.HelmChartFiles.ciConfigYaml +
+          ' or ' +
+          constants.KustomizeFiles.ciConfigYaml
       )
       .write()
 
@@ -174,7 +248,7 @@ export async function run(): Promise<void> {
 
     if (modifiedFolders.some(str => str.includes('manifests/'))) {
       await utils.Git.getInstance().add(manifestPath, GITHUB_WORKSPACE)
-      await utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts', GITHUB_WORKSPACE)
+      await utils.Git.getInstance().commit('chore(ci): k8s manifest templated for Helm Charts and Kustomize Projects', GITHUB_WORKSPACE)
       await utils.Git.getInstance().push(GITHUB_WORKSPACE)
 
       core.info('Modifications committed and changes pushed to remote.')
@@ -188,5 +262,71 @@ export async function run(): Promise<void> {
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
+  }
+}
+
+async function runKustomizeTemplating(
+  prefix: string,
+  GITHUB_WORKSPACE: string,
+  listingYamlManifestPath: string,
+  listingYamlRelativePath: string,
+  listingYamlName: string,
+  dir: path.ParsedPath,
+  tableRows: any[],
+  kustomizeProjectID: string,
+  overlayPath?: string
+): Promise<void> {
+  core.debug('runKustomizeTemplating called with prefix:' + prefix + ' overlayPath:' + (overlayPath || 'base'))
+
+  let manifestTargetFolder: path.FormatInputPathObject = path.parse(
+    GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
+  )
+  core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
+
+  fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
+  core.debug('Created folder: ' + path.format(manifestTargetFolder))
+
+  try {
+    // Check if kustomize is available
+    const { execSync } = require('child_process')
+    try {
+      execSync('which kustomize', { stdio: 'pipe' })
+    } catch {
+      core.setFailed('kustomize command not found. Please install kustomize: https://kubectl.docs.kubernetes.io/installation/kustomize/')
+      return
+    }
+
+    // Determine the source path for kustomize build
+    // We need to combine the base directory with the relative path to get the actual project directory
+    const projectPath = path.join(GITHUB_WORKSPACE, listingYamlRelativePath)
+    const sourcePath = overlayPath ? path.join(projectPath, overlayPath) : projectPath
+
+    // Run kustomize build and save to target folder
+    const manifestFileName = `${prefix}${listingYamlRelativePath.split('/').pop()}.yaml`
+    const manifestFilePath = path.join(path.format(manifestTargetFolder), manifestFileName)
+
+    core.info(`Running kustomize build on ${sourcePath}`)
+    const result = execSync(`kustomize build ${sourcePath}`, {
+      encoding: 'utf8',
+      stdio: 'pipe'
+    })
+
+    if (result && result.length > 0) {
+      fs.writeFileSync(manifestFilePath, result)
+      core.info(`✅ Kustomize manifest generated: ${manifestFilePath}`)
+      tableRows.push([
+        listingYamlName,
+        listingYamlRelativePath,
+        kustomizeProjectID,
+        '✅',
+        'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
+      ])
+    } else {
+      core.warning(`⚠️ Kustomize build produced empty output for ${listingYamlRelativePath}`)
+      tableRows.push([listingYamlName, listingYamlRelativePath, kustomizeProjectID, '⚠️', '-'])
+    }
+  } catch (error) {
+    core.error(`❌ Kustomize build failed for ${listingYamlRelativePath}: ${error}`)
+    tableRows.push([listingYamlName, listingYamlRelativePath, kustomizeProjectID, '❌', '-'])
   }
 }

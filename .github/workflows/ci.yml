@@ -61,6 +61,9 @@ jobs:
       - id: helm-chart-listing
         uses: "./.github/actions/helm-chart/listing"
 
+      - id: kustomize-listing
+        uses: "./.github/actions/kustomize/listing"
+
       - id: helm-chart-build-dependencies
         uses: "./.github/actions/helm-chart/dep-build"
 
@@ -69,9 +72,19 @@ jobs:
       
       - id: helm-chart-manifest-validation
         uses: "./.github/actions/helm-chart/manifest-validation"
+
+      - id: kustomize-manifest-validation
+        uses: "./.github/actions/kustomize/manifest-validation"
       
       - id: helm-chart-version-bump
         uses: "./.github/actions/helm-chart/version-bump"
+        with:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
+
+      - id: kustomize-version-bump
+        uses: "./.github/actions/kustomize/version-bump"
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}

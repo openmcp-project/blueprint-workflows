@@ -15,6 +15,14 @@ export const HelmChartFiles = {
   listingFile: 'helm-chart-listing.yaml'
 } as const
 
+export const KustomizeFiles = {
+  KustomizationYaml: 'kustomization.yaml',
+  KustomizationYml: 'kustomization.yml',
+  ciConfigYaml: '.ci.config.yaml',
+  ReadmeMd: 'README.md',
+  listingFile: 'kustomize-listing.yaml'
+} as const
+
 export const versionBumpIgnoredFiles: string[] = ['.ci.config.yaml'] as const
 
 export const envvars = {
@@ -40,7 +48,9 @@ export const Functionality = {
   helmChartValidation: 'helm-chart-validation',
   helmChartVersionBump: 'helm-chart-version-bump',
   helmChartDependencyUpdate: 'helm-chart-dependency-update',
-  k8sManifestTemplating: 'k8s-manifest-templating'
+  k8sManifestTemplating: 'k8s-manifest-templating',
+  kustomizeListing: 'kustomize-listing',
+  kustomizeVersionBump: 'kustomize-version-bump'
 }
 export const Yaml = {
   enable: 'enable'
@@ -58,5 +68,8 @@ export const ErrorMsgs = {
 export const Msgs = {
   HelmChartListingFolderContaining: 'Helm Chart Listing Folder containing %s',
   HelmChartListingFileYamlContent: 'Helm Chart Listing File Yaml Content',
-  HelmChartListingFileWritten: 'Helm Chart Listing File %s written.'
+  HelmChartListingFileWritten: 'Helm Chart Listing File %s written.',
+  KustomizeListingFolderContaining: 'Kustomize Listing Folder containing %s',
+  KustomizeListingFileYamlContent: 'Kustomize Listing File Yaml Content',
+  KustomizeListingFileWritten: 'Kustomize Listing File %s written.'
 } as const
