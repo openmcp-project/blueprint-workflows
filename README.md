@@ -6,7 +6,13 @@
 
 Workflows and Actions for Blueprints & Building Blocks for Open Managed Control Planes.
 
-This project provides reusable GitHub Workflows and Actions designed for projects following the structure of [blueprints](https://github.com/openmcp-project/blueprints) and [blueprint-building-blocks](https://github.com/openmcp-project/blueprint-building-blocks). These workflows and actions streamline CI/CD processes for Helm Charts and Kustomize projects allowing for more detailed Kubernetes manifests reviews of the changes before deployment using GitOps tools like [Flux](https://github.com/fluxcd/flux2).
+This project provides reusable GitHub Workflows and Actions that generate Kubernetes manifests from Helm Charts and Kustomize projects to enable detailed code reviews of infrastructure changes. The workflows also include quality gates through linting, validation, and automated version bumping to maintain consistency across deployments using GitOps tools like [Flux](https://github.com/fluxcd/flux2).
+
+Designed for projects following the structure of [blueprints](https://github.com/openmcp-project/blueprints) and [blueprint-building-blocks](https://github.com/openmcp-project/blueprint-building-blocks), these workflows streamline CI/CD processes by making Kubernetes manifest changes visible and reviewable in pull requests.
+
+Follow this PR to see example of the workflows in action:
+[Example PR](https://github.com/openmcp-project/blueprints/pull/47)
+[Action run](https://github.com/openmcp-project/blueprints/actions/runs/17266898629)
 
 ## Requirements and Setup
 
