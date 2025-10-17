@@ -6,7 +6,13 @@
 
 Workflows and Actions for Blueprints & Building Blocks for Open Managed Control Planes.
 
-This project provides reusable GitHub Workflows and Actions designed for projects following the structure of [blueprints](https://github.com/openmcp-project/blueprints) and [blueprint-building-blocks](https://github.com/openmcp-project/blueprint-building-blocks). These workflows and actions streamline CI/CD processes for Helm Charts allowing for more detailed Kubernetes manifests reviews of the changes before deployment using GitOps tools like [Flux](https://github.com/fluxcd/flux2).
+This project provides reusable GitHub Workflows and Actions that generate Kubernetes manifests from Helm Charts and Kustomize projects to enable detailed code reviews of infrastructure changes. The workflows also include quality gates through linting, validation, and automated version bumping to maintain consistency across deployments using GitOps tools like [Flux](https://github.com/fluxcd/flux2).
+
+Designed for projects following the structure of [blueprints](https://github.com/openmcp-project/blueprints) and [blueprint-building-blocks](https://github.com/openmcp-project/blueprint-building-blocks), these workflows streamline CI/CD processes by making Kubernetes manifest changes visible and reviewable in pull requests.
+
+Follow this PR to see example of the workflows in action:
+[Example PR](https://github.com/openmcp-project/blueprints/pull/47)
+[Action run](https://github.com/openmcp-project/blueprints/actions/runs/17266898629)
 
 ## Requirements and Setup
 
@@ -28,7 +34,7 @@ This project provides reusable GitHub Workflows and Actions designed for project
      ```
 
 #### 2. **PR Status Checks (git-pr-status-checks.yml)**
-   - **Description**: Performs Helm Chart listing, dependency updates, linting, manifest validation, and version bumping for pull requests.
+   - **Description**: Performs Helm Chart and Kustomize listing, dependency updates, linting, manifest validation, and version bumping for pull requests.
    - **Usage**:
      ```yaml
      jobs:
@@ -64,6 +70,8 @@ This project provides reusable GitHub Workflows and Actions designed for project
      ```
 
 ### Actions
+
+#### Helm Chart Actions
 
 #### 1. **Helm Chart Listing**
    - **Description**: Lists all Helm Charts in the repository.
@@ -122,8 +130,43 @@ This project provides reusable GitHub Workflows and Actions designed for project
          uses: openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@main
      ```
 
-#### 7. **K8s Manifest Templating**
-   - **Description**: Templates and validates Kubernetes manifests for Helm Charts.
+#### Kustomize Actions
+
+#### 7. **Kustomize Listing**
+   - **Description**: Lists all Kustomize projects in the repository.
+   - **Usage**:
+     ```yaml
+     steps:
+       - id: kustomize-listing
+         uses: openmcp-project/blueprint-workflows/.github/actions/kustomize/listing@main
+     ```
+
+#### 8. **Kustomize Manifest Validation**
+   - **Description**: Validates Kustomize manifests.
+   - **Usage**:
+     ```yaml
+     steps:
+       - id: kustomize-manifest-validation
+         uses: openmcp-project/blueprint-workflows/.github/actions/kustomize/manifest-validation@main
+     ```
+
+#### 9. **Kustomize Version Bump**
+   - **Description**: Bumps the version of modified Kustomize projects.
+   - **Usage**:
+     ```yaml
+     steps:
+       - id: kustomize-version-bump
+         uses: openmcp-project/blueprint-workflows/.github/actions/kustomize/version-bump@main
+         with:
+           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+           SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
+           TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
+     ```
+
+#### Other Actions
+
+#### 10. **K8s Manifest Templating**
+   - **Description**: Templates and validates Kubernetes manifests for Helm Charts and Kustomize projects.
    - **Usage**:
      ```yaml
      steps:
