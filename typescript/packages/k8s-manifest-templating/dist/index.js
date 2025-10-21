@@ -66811,15 +66811,7 @@ async function runKustomizeTemplating(prefix, GITHUB_WORKSPACE, listingYamlManif
     fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
     core.debug('Created folder: ' + path.format(manifestTargetFolder));
     try {
-        // Check if kustomize is available
         const { execSync } = __nccwpck_require__(5317);
-        try {
-            execSync('which kustomize', { stdio: 'pipe' });
-        }
-        catch {
-            core.setFailed('kustomize command not found. Please install kustomize: https://kubectl.docs.kubernetes.io/installation/kustomize/');
-            return;
-        }
         // Determine the source path for kustomize build
         // We need to combine the base directory with the relative path to get the actual project directory
         const projectPath = path.join(GITHUB_WORKSPACE, listingYamlRelativePath);
@@ -66828,7 +66820,7 @@ async function runKustomizeTemplating(prefix, GITHUB_WORKSPACE, listingYamlManif
         const manifestFileName = `${prefix}${listingYamlRelativePath.split('/').pop()}.yaml`;
         const manifestFilePath = path.join(path.format(manifestTargetFolder), manifestFileName);
         core.info(`Running kustomize build on ${sourcePath}`);
-        const result = execSync(`kustomize build ${sourcePath}`, {
+        const result = execSync(`kubectl kustomize ${sourcePath}`, {
             encoding: 'utf8',
             stdio: 'pipe'
         });

@@ -66646,18 +66646,9 @@ async function run() {
             // Check if validation is enabled for this directory
             if (dist_1.utils.isFunctionEnabled(dir, dist_1.constants.Functionality.kustomizeListing, true)) {
                 try {
-                    // Run kustomize build to validate the manifest
                     core.info(`Validating Kustomize project in ${listingYamlDir}`);
-                    // Check if kustomize is available
-                    try {
-                        (0, child_process_1.execSync)('which kustomize', { stdio: 'pipe' });
-                    }
-                    catch {
-                        core.setFailed('kustomize command not found. Please install kustomize: https://kubectl.docs.kubernetes.io/installation/kustomize/');
-                        return;
-                    }
-                    // Run kustomize build --dry-run to validate without applying
-                    const result = (0, child_process_1.execSync)(`kustomize build ${listingYamlDir}`, {
+                    // Run kubectl kustomize to validate
+                    const result = (0, child_process_1.execSync)(`kubectl kustomize ${listingYamlDir}`, {
                         encoding: 'utf8',
                         stdio: 'pipe'
                     });
