@@ -287,6 +287,7 @@ async function runKustomizeTemplating(
   core.debug('Created folder: ' + path.format(manifestTargetFolder))
 
   try {
+    const { execSync } = require('child_process')
     // Determine the source path for kustomize build
     // We need to combine the base directory with the relative path to get the actual project directory
     const projectPath = path.join(GITHUB_WORKSPACE, listingYamlRelativePath)
