@@ -69,7 +69,7 @@ export async function run(): Promise<void> {
           }
 
           // Run kustomize build --dry-run to validate without applying
-          const result = execSync(`kustomize build ${listingYamlDir}`, {
+          const result = execSync(`kubectl kustomize ${listingYamlDir}`, {
             encoding: 'utf8',
             stdio: 'pipe'
           })
