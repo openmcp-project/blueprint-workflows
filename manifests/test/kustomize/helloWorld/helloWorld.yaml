@@ -5,14 +5,14 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app: hello2
+    app: hello3
   name: the-map
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: hello2
+    app: hello3
   name: the-service
 spec:
   ports:
@@ -20,7 +20,7 @@ spec:
     protocol: TCP
     targetPort: 8080
   selector:
-    app: hello2
+    app: hello3
     deployment: hello
   type: LoadBalancer
 ---
@@ -28,18 +28,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: hello2
+    app: hello3
   name: the-deployment
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: hello2
+      app: hello3
       deployment: hello
   template:
     metadata:
       labels:
-        app: hello2
+        app: hello3
         deployment: hello
     spec:
       containers:
