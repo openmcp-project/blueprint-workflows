@@ -6,7 +6,7 @@ metadata:
 # Example configuration for the webserver
 # at https://github.com/monopole/hello
 commonLabels:
-  app: hello2
+  app: hello3
 
 resources:
 - deployment.yaml
