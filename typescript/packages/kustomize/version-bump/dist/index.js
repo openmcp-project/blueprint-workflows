@@ -69360,7 +69360,7 @@ async function run() {
             else {
                 console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl);
             }
-            await utilsKustomize.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
+            await utilsKustomize.exec('git remote add upstream ' + authenticatedRepoUrl + ' || test $? = 3', [], { cwd: GITHUB_WORKSPACE });
             await utilsKustomize.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
             await utilsKustomize.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
         }
