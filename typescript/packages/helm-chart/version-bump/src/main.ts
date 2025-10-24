@@ -66,7 +66,7 @@ export async function run(): Promise<void> {
       // Check if upstream remote already exists
       const remotesResult = await utilsHelmChart.exec('git remote', [], { cwd: GITHUB_WORKSPACE })
       const existingRemotes = remotesResult.stdout.split('\n').map(remote => remote.trim())
-      
+
       if (!existingRemotes.includes('upstream')) {
         await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE })
         console.log('Added upstream remote')
