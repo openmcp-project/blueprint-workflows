@@ -69360,7 +69360,16 @@ async function run() {
             else {
                 console.log('Token not found, using unauthenticated repo URL: ' + authenticatedRepoUrl);
             }
-            await utilsKustomize.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
+            // Check if upstream remote already exists
+            const remotesResult = await utilsKustomize.exec('git remote', [], { cwd: GITHUB_WORKSPACE });
+            const existingRemotes = remotesResult.stdout.split('\n').map(remote => remote.trim());
+            if (!existingRemotes.includes('upstream')) {
+                await utilsKustomize.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: GITHUB_WORKSPACE });
+                console.log('Added upstream remote');
+            }
+            else {
+                console.log('Upstream remote already exists');
+            }
             await utilsKustomize.exec('git remote -v', [], { cwd: GITHUB_WORKSPACE });
             await utilsKustomize.exec('git fetch --all', [], { cwd: GITHUB_WORKSPACE });
         }
