@@ -62,7 +62,9 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions)
+        const ignoreWarnings = utils.unrapYamlbyKey(options, 'ignoreWarnings', false)
+
+        await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])
       } else {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
