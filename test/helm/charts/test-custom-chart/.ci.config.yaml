@@ -21,6 +21,7 @@ helm-chart-linting:
     --with-subcharts: false # lint dependent charts (default true)
 helm-chart-validation:
   enable: true # default is true, even if you do NOT declare this feature flag!
+  ignoreWarnings: false # if true, warnings will be ignored and will not cause a failure (default false)
   options:
     --skip-crds: false # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default false)
     --skip-tests: false # skip tests from templated output (default false)
