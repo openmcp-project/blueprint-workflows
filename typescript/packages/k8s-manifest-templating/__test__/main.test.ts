@@ -103,7 +103,8 @@ describe('main.run manifest templating scenarios', () => {
   manifestPath: test/helm/charts`),
       template: jest.fn().mockReturnValue(undefined),
       readPipelineFeature: jest.fn().mockReturnValue(parseDocument(options)),
-      readPipelineFeatureOptions: jest.fn().mockReturnValue(false)
+      readPipelineFeatureOptions: jest.fn().mockReturnValue(false),
+      readIgnoreWarnings: jest.fn().mockReturnValue(undefined)
     }
 
     // Mock getInstance to return this mock instance
@@ -126,12 +127,10 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'],
+      undefined
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
-
-    //expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/Additional manifest templating detected: .*/))
-    //expect(main.run).toHaveBeenCalled()
   })
 
   it('handles default-manifest-templating true', async () => {
@@ -149,7 +148,8 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'],
+      undefined
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
   })
@@ -179,7 +179,8 @@ describe('main.run manifest templating scenarios', () => {
         root: ''
       },
       ' -f testenv/test/helm/charts/test-custom-chart/values.yaml',
-      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"']
+      ['--output-dir "testenv/manifests/test/helm/charts/test-custom-chart"'],
+      undefined
     )
     expect(core.info).toHaveBeenCalledWith('Additional manifest templating disabled')
   })
@@ -206,7 +207,8 @@ additional-manifest-templating:
         root: ''
       },
       ' -f testenv/test/helm/charts/test-custom-chart/values.network.yaml -f testenv/test/helm/charts/test-custom-chart/values.dev.yaml',
-      ['--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"']
+      ['--output-dir "testenv/manifests/test/helm/charts/dev.test-custom-chart"'],
+      undefined
     )
     expect(core.info).toHaveBeenCalledWith(
       'Additional manifest templating detected: [{"prefix-manifest-folder-name":"dev","value-files":["values.network.yaml","values.dev.yaml"]}]'
