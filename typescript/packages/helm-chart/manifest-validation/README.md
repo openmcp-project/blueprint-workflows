@@ -33,11 +33,11 @@ helm-chart-validation:
   ignoreWarnings: # list of regex patterns to ignore in stderr (optional)
     - "^walk\\.go:\\d+: found symbolic link in path: .*"
   options:
-    --skip-crds: false # skip CRDs (default false)
+    --skip-crds: false # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default false)
     --skip-tests: false # skip tests from templated output (default false)
     --include-crds: false # include CRDs in the templated output (default false)
     --debug: false # enable verbose output (default false)
-    --dependency-update: true # update dependencies if missing (default true)
+    --dependency-update: true # update dependencies if they are missing before installing the chart (default true)
 ```
 
 ### Ignore Warnings
