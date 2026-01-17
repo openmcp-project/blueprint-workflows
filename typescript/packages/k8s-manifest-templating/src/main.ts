@@ -41,13 +41,15 @@ async function runHelmTemplating(
   // Parse ignoreWarnings - must be an array of regex patterns
   let ignoreWarnings: string[] | undefined
   const rawIgnoreWarnings = utils.unrapYamlbyKey(options as any, 'ignoreWarnings', undefined)
+  const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
 
   if (Array.isArray(rawIgnoreWarnings)) {
     ignoreWarnings = rawIgnoreWarnings
   } else if (typeof rawIgnoreWarnings === 'boolean') {
     throw new Error(
-      `ignoreWarnings must be an array of regex patterns, not a boolean. ` +
-        `Example: ignoreWarnings: ["^walk.go:74: found symbolic link in path: .*"]`
+      `Invalid configuration in ${configFilePath}: ` +
+        `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
+        `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`
     )
   } else {
     ignoreWarnings = undefined // Use defaults only
