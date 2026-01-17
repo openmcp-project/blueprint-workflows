@@ -62,25 +62,8 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        // Parse ignoreWarnings - must be an array of regex patterns
-        // Note: ignoreWarnings is at the section level (helm-chart-validation), not inside options
-        let ignoreWarnings: string[] | undefined
-        const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
-        const rawIgnoreWarnings = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.helmChartValidation, 'ignoreWarnings')
-
-        if (rawIgnoreWarnings === false) {
-          ignoreWarnings = undefined // Not set, use defaults only
-        } else if (Array.isArray(rawIgnoreWarnings)) {
-          ignoreWarnings = rawIgnoreWarnings
-        } else if (typeof rawIgnoreWarnings === 'boolean') {
-          throw new Error(
-            `Invalid configuration in ${configFilePath}: ` +
-              `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
-              `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`
-          )
-        } else {
-          ignoreWarnings = undefined // Use defaults only
-        }
+        // Read ignoreWarnings from the section level (not inside options)
+        const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, constants.Functionality.helmChartValidation)
 
         await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])

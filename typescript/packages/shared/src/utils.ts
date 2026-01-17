@@ -386,6 +386,39 @@ export class HelmChart {
     return featureSection
   }
 
+  /**
+   * Reads the ignoreWarnings configuration from a pipeline section.
+   * @param dir - The directory containing the .ci.config.yaml file.
+   * @param functionName - The name of the pipeline section (e.g., 'helm-chart-validation').
+   * @returns An array of regex patterns to ignore, or undefined if not configured.
+   * @throws Error if ignoreWarnings is set to a boolean instead of an array.
+   */
+  public readIgnoreWarnings(dir: path.FormatInputPathObject, functionName: string): string[] | undefined {
+    const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
+    const rawIgnoreWarnings = this.readPipelineFeature(dir, functionName, 'ignoreWarnings')
+
+    if (rawIgnoreWarnings === false) {
+      return undefined // Not set, use defaults only
+    }
+
+    if (typeof rawIgnoreWarnings === 'boolean') {
+      throw new Error(
+        `Invalid configuration in ${configFilePath}: ` +
+          `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
+          `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`
+      )
+    }
+
+    // Convert YAML node to plain JS array (handles YAMLSeq from yaml library)
+    const converted = rawIgnoreWarnings && typeof rawIgnoreWarnings.toJSON === 'function' ? rawIgnoreWarnings.toJSON() : rawIgnoreWarnings
+
+    if (Array.isArray(converted)) {
+      return converted
+    }
+
+    return undefined // Use defaults only
+  }
+
   public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
     if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
       return false

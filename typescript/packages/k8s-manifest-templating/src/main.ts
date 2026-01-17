@@ -38,25 +38,8 @@ async function runHelmTemplating(
 
   helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
-  // Parse ignoreWarnings - must be an array of regex patterns
-  // Note: ignoreWarnings is at the section level (k8s-manifest-templating), not inside options
-  let ignoreWarnings: string[] | undefined
-  const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
-  const rawIgnoreWarnings = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'ignoreWarnings')
-
-  if (rawIgnoreWarnings === false) {
-    ignoreWarnings = undefined // Not set, use defaults only
-  } else if (Array.isArray(rawIgnoreWarnings)) {
-    ignoreWarnings = rawIgnoreWarnings
-  } else if (typeof rawIgnoreWarnings === 'boolean') {
-    throw new Error(
-      `Invalid configuration in ${configFilePath}: ` +
-        `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
-        `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`
-    )
-  } else {
-    ignoreWarnings = undefined // Use defaults only
-  }
+  // Read ignoreWarnings from the section level (not inside options)
+  const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, constants.Functionality.k8sManifestTemplating)
 
   let valueArgs: string = ''
   valueFiles.forEach(valueFile => {
