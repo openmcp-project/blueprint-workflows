@@ -39,11 +39,14 @@ async function runHelmTemplating(
   helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
   // Parse ignoreWarnings - must be an array of regex patterns
+  // Note: ignoreWarnings is at the section level (k8s-manifest-templating), not inside options
   let ignoreWarnings: string[] | undefined
-  const rawIgnoreWarnings = utils.unrapYamlbyKey(options as any, 'ignoreWarnings', undefined)
   const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
+  const rawIgnoreWarnings = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.k8sManifestTemplating, 'ignoreWarnings')
 
-  if (Array.isArray(rawIgnoreWarnings)) {
+  if (rawIgnoreWarnings === false) {
+    ignoreWarnings = undefined // Not set, use defaults only
+  } else if (Array.isArray(rawIgnoreWarnings)) {
     ignoreWarnings = rawIgnoreWarnings
   } else if (typeof rawIgnoreWarnings === 'boolean') {
     throw new Error(

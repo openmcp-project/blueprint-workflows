@@ -63,11 +63,14 @@ export async function run(): Promise<void> {
         }
 
         // Parse ignoreWarnings - must be an array of regex patterns
+        // Note: ignoreWarnings is at the section level (helm-chart-validation), not inside options
         let ignoreWarnings: string[] | undefined
-        const rawIgnoreWarnings = utils.unrapYamlbyKey(options, 'ignoreWarnings', undefined)
         const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)
+        const rawIgnoreWarnings = utilsHelmChart.readPipelineFeature(dir, constants.Functionality.helmChartValidation, 'ignoreWarnings')
 
-        if (Array.isArray(rawIgnoreWarnings)) {
+        if (rawIgnoreWarnings === false) {
+          ignoreWarnings = undefined // Not set, use defaults only
+        } else if (Array.isArray(rawIgnoreWarnings)) {
           ignoreWarnings = rawIgnoreWarnings
         } else if (typeof rawIgnoreWarnings === 'boolean') {
           throw new Error(
