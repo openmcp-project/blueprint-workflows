@@ -281,8 +281,9 @@ export class HelmChart {
   }
   /**
    * template
+   * @param ignoreWarnings - Array of regex patterns to ignore in stderr. Default pattern for deprecated chart warning is always included.
    */
-  public async template(dir: path.ParsedPath, valueFiles: string, options?: string[], ignoreWarnings?: boolean) {
+  public async template(dir: path.ParsedPath, valueFiles: string, options?: string[], ignoreWarnings?: string[]) {
     let cmdOptions: string = ''
     if (options !== undefined) {
       cmdOptions = options?.join(' ')
@@ -291,11 +292,24 @@ export class HelmChart {
 
     let result: exec2.ExecOutput = await this.exec(cmdExec)
 
-    if (!ignoreWarnings) {
-      if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-        throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
+    // Default patterns that are always ignored (backward compatible)
+    const defaultPatterns = ['^WARNING: This chart is deprecated$']
+    const patterns = ignoreWarnings ? [...defaultPatterns, ...ignoreWarnings] : defaultPatterns
+
+    if (result.stderr && result.stderr.trim() !== '') {
+      const stderrLines = result.stderr
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line !== '')
+
+      for (const line of stderrLines) {
+        const isIgnored = patterns.some(pattern => new RegExp(pattern).test(line))
+        if (!isIgnored) {
+          throw new Error(`Helm Chart ${path.format(dir)} templating produced unexpected stderr: ${result.stderr}`)
+        }
       }
     }
+
     if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
       throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr)
     }

@@ -62,7 +62,20 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        const ignoreWarnings = utils.unrapYamlbyKey(options, 'ignoreWarnings', false)
+        // Parse ignoreWarnings - must be an array of regex patterns
+        let ignoreWarnings: string[] | undefined
+        const rawIgnoreWarnings = utils.unrapYamlbyKey(options, 'ignoreWarnings', undefined)
+
+        if (Array.isArray(rawIgnoreWarnings)) {
+          ignoreWarnings = rawIgnoreWarnings
+        } else if (typeof rawIgnoreWarnings === 'boolean') {
+          throw new Error(
+            `ignoreWarnings must be an array of regex patterns, not a boolean. ` +
+              `Example: ignoreWarnings: ["^walk.go:74: found symbolic link in path: .*"]`
+          )
+        } else {
+          ignoreWarnings = undefined // Use defaults only
+        }
 
         await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])

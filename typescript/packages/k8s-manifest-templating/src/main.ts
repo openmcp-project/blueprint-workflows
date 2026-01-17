@@ -38,13 +38,28 @@ async function runHelmTemplating(
 
   helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
+  // Parse ignoreWarnings - must be an array of regex patterns
+  let ignoreWarnings: string[] | undefined
+  const rawIgnoreWarnings = utils.unrapYamlbyKey(options as any, 'ignoreWarnings', undefined)
+
+  if (Array.isArray(rawIgnoreWarnings)) {
+    ignoreWarnings = rawIgnoreWarnings
+  } else if (typeof rawIgnoreWarnings === 'boolean') {
+    throw new Error(
+      `ignoreWarnings must be an array of regex patterns, not a boolean. ` +
+        `Example: ignoreWarnings: ["^walk.go:74: found symbolic link in path: .*"]`
+    )
+  } else {
+    ignoreWarnings = undefined // Use defaults only
+  }
+
   let valueArgs: string = ''
   valueFiles.forEach(valueFile => {
     valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
   })
 
   core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
-  await utilsHelmChart.template(dir, valueArgs, helmOptions)
+  await utilsHelmChart.template(dir, valueArgs, helmOptions, ignoreWarnings)
   tableRows.push([listingYamlName, listingYamlRelativePath, helmChartID, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
 }
 

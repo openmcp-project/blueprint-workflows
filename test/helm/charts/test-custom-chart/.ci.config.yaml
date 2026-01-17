@@ -21,7 +21,10 @@ helm-chart-linting:
     --with-subcharts: false # lint dependent charts (default true)
 helm-chart-validation:
   enable: true # default is true, even if you do NOT declare this feature flag!
-  ignoreWarnings: false # if true, warnings will be ignored and will not cause a failure (default false)
+  # ignoreWarnings: list of regex patterns to ignore in stderr. "WARNING: This chart is deprecated" is always ignored by default.
+  # Example patterns to ignore symlink warnings:
+  # ignoreWarnings:
+  #   - ^walk\.go:\d+: found symbolic link in path: .*
   options:
     --skip-crds: false # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default false)
     --skip-tests: false # skip tests from templated output (default false)
@@ -34,6 +37,10 @@ helm-chart-dependency-update:
   enable: true
 k8s-manifest-templating:
   enable: true
+  # ignoreWarnings: list of regex patterns to ignore in stderr. "WARNING: This chart is deprecated" is always ignored by default.
+  # Example patterns to ignore symlink warnings:
+  # ignoreWarnings:
+  #   - ^walk\.go:\d+: found symbolic link in path: .*
   options:
     --skip-crds: true # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default true)
   helm-charts:
