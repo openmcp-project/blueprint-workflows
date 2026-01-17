@@ -104,7 +104,7 @@ describe('main.run with ignoreWarnings option', () => {
       template: jest.fn().mockResolvedValue(undefined),
       getHelmValueFiles: jest.fn().mockReturnValue('-f /test/workspace/charts/test-chart/values.yaml'),
       readPipelineFeatureOptions: jest.fn().mockReturnValue(options ? parseDocument(options) : false),
-      readPipelineFeature: jest.fn().mockReturnValue(false) // Default: ignoreWarnings not set
+      readIgnoreWarnings: jest.fn().mockReturnValue(undefined) // Default: ignoreWarnings not set
     }
 
     utils.HelmChart.getInstance.mockReturnValue(helmChartInstanceMock)
@@ -129,8 +129,14 @@ describe('main.run with ignoreWarnings option', () => {
     })
   }
 
-  function setIgnoreWarnings(value: any) {
-    helmChartInstanceMock.readPipelineFeature.mockReturnValue(value)
+  function setIgnoreWarnings(value: string[] | undefined | Error) {
+    if (value instanceof Error) {
+      helmChartInstanceMock.readIgnoreWarnings.mockImplementation(() => {
+        throw value
+      })
+    } else {
+      helmChartInstanceMock.readIgnoreWarnings.mockReturnValue(value)
+    }
   }
 
   describe('ignoreWarnings option from YAML config', () => {
@@ -166,28 +172,15 @@ describe('main.run with ignoreWarnings option', () => {
       expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), [])
     })
 
-    it('should throw error when ignoreWarnings is set to boolean true', async () => {
+    it('should throw error when ignoreWarnings is set to boolean', async () => {
       setupHelmChartListingDoc('--dependency-update: true')
-      setIgnoreWarnings(true)
+      setIgnoreWarnings(new Error("'ignoreWarnings' must be an array of regex patterns, not a boolean"))
 
       await main.run()
 
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
       )
-    })
-
-    it('should throw error when ignoreWarnings is set to boolean false', async () => {
-      setupHelmChartListingDoc('--dependency-update: true')
-      setIgnoreWarnings(false) // Note: false here means the value IS set to false (boolean)
-      // We need to differentiate between "not set" (readPipelineFeature returns false) and "set to false" (boolean)
-      // Actually readPipelineFeature returns false when not found, so we can't distinguish
-      // Let's test with explicit boolean true only since false = not found
-
-      await main.run()
-
-      // When readPipelineFeature returns false, it means not found, so ignoreWarnings = undefined
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined)
     })
 
     it('should handle multiple patterns in ignoreWarnings array', async () => {
