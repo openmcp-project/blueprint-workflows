@@ -173,7 +173,9 @@ ignoreWarnings: true`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), true)
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
+      )
     })
 
     it('should throw error when ignoreWarnings is set to boolean false', async () => {
@@ -184,7 +186,9 @@ ignoreWarnings: false`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), false)
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
+      )
     })
 
     it('should handle multiple patterns in ignoreWarnings array', async () => {
