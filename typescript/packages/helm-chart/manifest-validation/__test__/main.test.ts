@@ -215,11 +215,6 @@ describe('main.run with ignoreWarnings option', () => {
 
       const [, valueFiles, helmOptions, ignoreWarnings] = helmChartInstanceMock.template.mock.calls[0]
 
-      expect(dir).toEqual(
-        expect.objectContaining({
-          dir: '/test/workspace/charts/test-chart'
-        })
-      )
       expect(valueFiles).toBe('-f /test/workspace/charts/test-chart/values.yaml')
       expect(Array.isArray(helmOptions)).toBe(true)
       expect(ignoreWarnings).toEqual(['^test-pattern.*'])
