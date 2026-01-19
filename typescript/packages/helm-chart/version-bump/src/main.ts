@@ -113,6 +113,8 @@ export async function run(): Promise<void> {
       core.debug(file)
     }
 
+    let chartBumpedCount = 0
+
     for (const key of Object.keys(foundHelmChartFolderModified)) {
       console.log('Processing ' + key)
       let listingItem = utils.unrapYamlbyKey(helmChartListingYamlDoc, key)
@@ -172,6 +174,7 @@ export async function run(): Promise<void> {
               }
 
               fs.writeFileSync(GITHUB_WORKSPACE + '/' + relativePath + '/' + constants.HelmChartFiles.Chartyaml, yaml.stringify(chartYaml, options), 'utf-8')
+              chartBumpedCount++
 
               await utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE)
               await utils.Git.getInstance().commit(
@@ -211,7 +214,10 @@ export async function run(): Promise<void> {
       .write()
 
     core.endGroup()
-    await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    if (chartBumpedCount > 0) {
+      console.log('Total of ' + chartBumpedCount + ' Helm Charts were version bumped.')
+      await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    }
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
