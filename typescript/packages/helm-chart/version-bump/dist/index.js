@@ -69415,6 +69415,7 @@ async function run() {
         for (const file of filesOnBaseBranch) {
             core.debug(file);
         }
+        let chartBumpedCount = 0;
         for (const key of Object.keys(foundHelmChartFolderModified)) {
             console.log('Processing ' + key);
             let listingItem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, key);
@@ -69470,6 +69471,7 @@ async function run() {
                                 lineWidth: 0 // Prevents automatic line wrapping
                             };
                             fs.writeFileSync(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml, yaml.stringify(chartYaml, options), 'utf-8');
+                            chartBumpedCount++;
                             await dist_1.utils.Git.getInstance().add(path.parse(GITHUB_WORKSPACE + '/' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml), GITHUB_WORKSPACE);
                             await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/' + dist_1.constants.HelmChartFiles.Chartyaml + '.version ' + chartVersion + ' -> ' + baseBranchBumpedVersion + '"', GITHUB_WORKSPACE);
                             break;
@@ -69501,7 +69503,10 @@ async function run() {
             dist_1.constants.HelmChartFiles.ciConfigYaml)
             .write();
         core.endGroup();
-        await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        if (chartBumpedCount > 0) {
+            console.log('Total of ' + chartBumpedCount + ' Helm Charts were version bumped.');
+            await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        }
     }
     catch (error) {
         // Fail the workflow run if an error occurs
