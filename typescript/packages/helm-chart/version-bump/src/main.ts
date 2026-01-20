@@ -217,6 +217,8 @@ export async function run(): Promise<void> {
     if (chartBumpedCount > 0) {
       console.log('Total of ' + chartBumpedCount + ' Helm Charts were version bumped.')
       await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    } else {
+      console.log('Helm Chart version bump completed. No version were bumped.')
     }
   } catch (error) {
     // Fail the workflow run if an error occurs

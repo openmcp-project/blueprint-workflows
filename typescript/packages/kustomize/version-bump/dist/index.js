@@ -69415,6 +69415,7 @@ async function run() {
             ')\' || true"';
         let resultFiles = await utilsKustomize.exec(cmdKustomizeSearch, [], { cwd: GITHUB_WORKSPACE });
         const filesOnBaseBranch = resultFiles.stdout.split(/\r?\n/);
+        let kustomizationBumpedCount = 0;
         // Process each modified kustomize project
         for (const key of Object.keys(foundKustomizeFolderModified)) {
             console.log('Processing ' + key);
@@ -69465,6 +69466,7 @@ async function run() {
                             semVerAction = '✳️ Bumped';
                             // Write the bumped version to .version file
                             utilsKustomize.writeVersionFile(dir, baseBranchBumpedVersion);
+                            kustomizationBumpedCount++;
                             await dist_1.utils.Git.getInstance().add(path.parse(path.join(dir, '.version')), GITHUB_WORKSPACE);
                             await dist_1.utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/.version ' + currentVersion + ' -> ' + baseBranchBumpedVersion, GITHUB_WORKSPACE);
                             break;
@@ -69496,7 +69498,13 @@ async function run() {
             dist_1.constants.KustomizeFiles.ciConfigYaml)
             .write();
         core.endGroup();
-        await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        if (kustomizationBumpedCount > 0) {
+            core.info('Kustomize version bump completed. Bumped ' + kustomizationBumpedCount + ' .version files.');
+            await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        }
+        else {
+            core.info('Kustomize version bump completed. No .version files were bumped.');
+        }
     }
     catch (error) {
         // Fail the workflow run if an error occurs
