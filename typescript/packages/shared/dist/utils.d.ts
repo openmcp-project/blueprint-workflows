@@ -36,8 +36,9 @@ export declare class HelmChart {
     getListingFileContent(filePath: path.FormatInputPathObject): string;
     /**
      * template
+     * @param ignoreWarnings - Array of regex patterns to ignore in stderr. Default pattern for deprecated chart warning is always included.
      */
-    template(dir: path.ParsedPath, valueFiles: string, options?: string[]): Promise<string>;
+    template(dir: path.ParsedPath, valueFiles: string, options?: string[], ignoreWarnings?: string[]): Promise<string>;
     /**
      *
      */
@@ -52,6 +53,14 @@ export declare class HelmChart {
      * @returns The feature object if found, or false if not present.
      */
     readPipelineFeature(dir: path.FormatInputPathObject, functionName: string, featureName: string): yaml.Document | false;
+    /**
+     * Reads the ignoreWarnings configuration from a pipeline section.
+     * @param dir - The directory containing the .ci.config.yaml file.
+     * @param functionName - The name of the pipeline section (e.g., 'helm-chart-validation').
+     * @returns An array of regex patterns to ignore, or undefined if not configured.
+     * @throws Error if ignoreWarnings is set to a boolean instead of an array.
+     */
+    readIgnoreWarnings(dir: path.FormatInputPathObject, functionName: string): string[] | undefined;
     readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any;
     generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]): Promise<string>;
 }

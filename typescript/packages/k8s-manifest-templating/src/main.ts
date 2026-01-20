@@ -38,13 +38,16 @@ async function runHelmTemplating(
 
   helmOptions.push('--output-dir "' + path.format(manifestTargetFolder) + '"')
 
+  // Read ignoreWarnings from the section level (not inside options)
+  const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, constants.Functionality.k8sManifestTemplating)
+
   let valueArgs: string = ''
   valueFiles.forEach(valueFile => {
     valueArgs += ' -f ' + GITHUB_WORKSPACE + '/' + listingYamlRelativePath + '/' + valueFile
   })
 
   core.debug('Calling utilsHelmChart.template with args: ' + valueArgs + ' and helmOptions: ' + helmOptions)
-  await utilsHelmChart.template(dir, valueArgs, helmOptions)
+  await utilsHelmChart.template(dir, valueArgs, helmOptions, ignoreWarnings)
   tableRows.push([listingYamlName, listingYamlRelativePath, helmChartID, '✅', 'manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()])
 }
 

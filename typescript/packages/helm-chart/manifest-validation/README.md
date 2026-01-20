@@ -29,13 +29,31 @@ Manifest validation can be customized per chart using `.ci.config.yaml`:
 
 ```yaml
 helm-chart-validation:
-  enable: true # default is true, even if you do NOT declare this feature flag!
+  enable: true # default is true
+  ignoreWarnings: # list of regex patterns to ignore in stderr (optional)
+    - "^walk\\.go:\\d+: found symbolic link in path: .*"
   options:
     --skip-crds: false # if set, no CRDs will be installed. By default, CRDs are installed if not already present (default false)
     --skip-tests: false # skip tests from templated output (default false)
     --include-crds: false # include CRDs in the templated output (default false)
     --debug: false # enable verbose output (default false)
     --dependency-update: true # update dependencies if they are missing before installing the chart (default true)
+```
+
+### Ignore Warnings
+
+The `ignoreWarnings` option allows you to suppress specific warnings from `helm template` stderr output. This is useful for known harmless warnings like symbolic link warnings.
+
+- Accepts an array of regex patterns
+- The pattern `^WARNING: This chart is deprecated$` is always ignored by default
+- Each line of stderr is matched against all patterns; unmatched lines cause validation to fail
+
+**Example - Ignore symbolic link warnings:**
+
+```yaml
+helm-chart-validation:
+  ignoreWarnings:
+    - "^walk\\.go:\\d+: found symbolic link in path: .*"
 ```
 
 ## Result Status Indicators
