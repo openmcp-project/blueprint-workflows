@@ -66626,6 +66626,7 @@ async function run() {
         ];
         let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         core.summary.addHeading('Helm Documentation README.md Generation Results').addRaw(summaryRawContent);
+        let updatedReadmeCount = 0;
         for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
             let yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
             let listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
@@ -66669,6 +66670,7 @@ async function run() {
                     //if (modifiedFolders.includes('M ' + listingYamlRelativePath + '/' + readmeFileName)) {
                     await dist_1.utils.Git.getInstance().add(dir, GITHUB_WORKSPACE);
                     await dist_1.utils.Git.getInstance().commit('chore(ci): update Helm Chart ' + listingYamlRelativePath + '/' + readmeFileName + ' file', GITHUB_WORKSPACE);
+                    updatedReadmeCount++;
                 }
             }
             else {
@@ -66681,7 +66683,13 @@ async function run() {
             .addDetails('Legende', '✅ = README.md generated \n :heavy_exclamation_mark: = README.md generation disabled by ' + dist_1.constants.HelmChartFiles.ciConfigYaml)
             .write();
         core.endGroup();
-        await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        if (updatedReadmeCount > 0) {
+            core.info('Helm Documentation README.md generation completed. Updated ' + updatedReadmeCount + ' README.md files.');
+            await dist_1.utils.Git.getInstance().push(GITHUB_WORKSPACE);
+        }
+        else {
+            core.info('Helm Documentation README.md generation completed. No README.md files were updated.');
+        }
         ///////////////////////////////////////////////////////////////////////////////////////////////////
     }
     catch (error) {
