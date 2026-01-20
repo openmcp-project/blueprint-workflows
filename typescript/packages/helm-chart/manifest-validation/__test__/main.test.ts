@@ -155,12 +155,7 @@ describe('main.run with ignoreWarnings option', () => {
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        ['^walk\\.go:\\d+: found symbolic link in path: .*']
-      )
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), ['^walk\\.go:\\d+: found symbolic link in path: .*'])
     })
 
     it('should pass empty array when ignoreWarnings is empty array', async () => {
@@ -178,9 +173,7 @@ describe('main.run with ignoreWarnings option', () => {
 
       await main.run()
 
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
-      )
+      expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean"))
     })
 
     it('should handle multiple patterns in ignoreWarnings array', async () => {
@@ -272,13 +265,7 @@ describe('main.run with ignoreWarnings option', () => {
 
       await main.run()
 
-      expect(core.summary.addTable).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.arrayContaining([
-            expect.objectContaining({ data: 'UID Helm Chart', header: true })
-          ])
-        ])
-      )
+      expect(core.summary.addTable).toHaveBeenCalledWith(expect.arrayContaining([expect.arrayContaining([expect.objectContaining({ data: 'UID Helm Chart', header: true })])]))
       expect(core.summary.write).toHaveBeenCalled()
     })
   })
