@@ -28,7 +28,7 @@ jobs:
       folders: ${{ steps.set-output.outputs.folders }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       
       - name: Find folders containing tsconfig.json
         id: find-folders
@@ -66,7 +66,7 @@ jobs:
           - TypeScript
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Initialize CodeQL for ${{ matrix.folder }}
         uses: github/codeql-action/init@v4
