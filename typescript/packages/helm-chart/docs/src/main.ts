@@ -31,6 +31,7 @@ export async function run(): Promise<void> {
     let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
 
     core.summary.addHeading('Helm Documentation README.md Generation Results').addRaw(summaryRawContent)
+    let updatedReadmeCount = 0
 
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
       let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
@@ -86,6 +87,7 @@ export async function run(): Promise<void> {
           //if (modifiedFolders.includes('M ' + listingYamlRelativePath + '/' + readmeFileName)) {
           await utils.Git.getInstance().add(dir, GITHUB_WORKSPACE)
           await utils.Git.getInstance().commit('chore(ci): update Helm Chart ' + listingYamlRelativePath + '/' + readmeFileName + ' file', GITHUB_WORKSPACE)
+          updatedReadmeCount++
         }
       } else {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
@@ -99,8 +101,12 @@ export async function run(): Promise<void> {
       .write()
     core.endGroup()
 
-    await utils.Git.getInstance().push(GITHUB_WORKSPACE)
-
+    if (updatedReadmeCount > 0) {
+      core.info('Helm Documentation README.md generation completed. Updated ' + updatedReadmeCount + ' README.md files.')
+      await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    } else {
+      core.info('Helm Documentation README.md generation completed. No README.md files were updated.')
+    }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
   } catch (error) {
     // Fail the workflow run if an error occurs
