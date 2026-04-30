@@ -32,20 +32,34 @@ This action processes projects found in listing files and generates Kubernetes m
 ## Configuration
 
 ### Helm Charts Configuration
+
 Configure in `.ci.config.yaml`:
+
 ```yaml
 k8s-manifest-templating:
+  ignoreWarnings: # list of regex patterns to ignore in stderr (optional)
+    - "^walk\\.go:\\d+: found symbolic link in path: .*"
   helm-charts:
     default-manifest-templating: true
     additional-manifest-templating:
       - prefix-manifest-folder-name: "dev"
         value-files: ["values.yaml", "values.dev.yaml"]
-      - prefix-manifest-folder-name: "prod"  
+      - prefix-manifest-folder-name: "prod"
         value-files: ["values.yaml", "values.prod.yaml"]
 ```
 
+### Ignore Warnings
+
+The `ignoreWarnings` option suppresses specific warnings from `helm template` stderr output:
+
+- Accepts an array of regex patterns
+- The pattern `^WARNING: This chart is deprecated$` is always ignored by default
+- Useful for known harmless warnings like symbolic link warnings
+
 ### Kustomize Projects Configuration
+
 Configure in `.ci.config.yaml`:
+
 ```yaml
 k8s-manifest-templating:
   kustomize-projects:

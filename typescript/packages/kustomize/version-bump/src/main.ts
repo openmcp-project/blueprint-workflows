@@ -119,6 +119,8 @@ export async function run(): Promise<void> {
     let resultFiles = await utilsKustomize.exec(cmdKustomizeSearch, [], { cwd: GITHUB_WORKSPACE })
     const filesOnBaseBranch: string[] = resultFiles.stdout.split(/\r?\n/)
 
+    let kustomizationBumpedCount = 0
+
     // Process each modified kustomize project
     for (const key of Object.keys(foundKustomizeFolderModified)) {
       console.log('Processing ' + key)
@@ -175,6 +177,7 @@ export async function run(): Promise<void> {
 
               // Write the bumped version to .version file
               utilsKustomize.writeVersionFile(dir, baseBranchBumpedVersion)
+              kustomizationBumpedCount++
 
               await utils.Git.getInstance().add(path.parse(path.join(dir, '.version')), GITHUB_WORKSPACE)
               await utils.Git.getInstance().commit('chore(ci): update ' + relativePath + '/.version ' + currentVersion + ' -> ' + baseBranchBumpedVersion, GITHUB_WORKSPACE)
@@ -211,7 +214,12 @@ export async function run(): Promise<void> {
       .write()
 
     core.endGroup()
-    await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    if (kustomizationBumpedCount > 0) {
+      core.info('Kustomize version bump completed. Bumped ' + kustomizationBumpedCount + ' .version files.')
+      await utils.Git.getInstance().push(GITHUB_WORKSPACE)
+    } else {
+      core.info('Kustomize version bump completed. No .version files were bumped.')
+    }
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)

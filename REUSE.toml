@@ -7,14 +7,14 @@ SPDX-PackageComment = "The code in this project may include calls to APIs (\"API
 [[annotations]]
 path = "**"
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2025 SAP SE or an SAP affiliate company and blueprint-workflows contributors"
+SPDX-FileCopyrightText = "© 2026 SAP SE or an SAP affiliate company and blueprint-workflows contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
 path = "**/dist/*"
 precedence = "aggregate"
 SPDX-FileCopyrightText = [
-    "2025 SAP SE or an SAP affiliate company and blueprint-workflows contributors",
+    "© 2026 SAP SE or an SAP affiliate company and blueprint-workflows contributors",
     "Additional copyright holders of dependencies used are contained in licenses.txt"
 ]
 SPDX-License-Identifier = "Apache-2.0"

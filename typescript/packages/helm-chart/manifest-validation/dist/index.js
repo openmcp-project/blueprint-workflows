@@ -30127,6 +30127,22 @@ function charFromCodepoint(c) {
   );
 }
 
+// set a property of a literal object, while protecting against prototype pollution,
+// see https://github.com/nodeca/js-yaml/issues/164 for more details
+function setProperty(object, key, value) {
+  // used for this specific key only because Object.defineProperty is slow
+  if (key === '__proto__') {
+    Object.defineProperty(object, key, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: value
+    });
+  } else {
+    object[key] = value;
+  }
+}
+
 var simpleEscapeCheck = new Array(256); // integer, for fast access
 var simpleEscapeMap = new Array(256);
 for (var i = 0; i < 256; i++) {
@@ -30305,7 +30321,7 @@ function mergeMappings(state, destination, source, overridableKeys) {
     key = sourceKeys[index];
 
     if (!_hasOwnProperty.call(destination, key)) {
-      destination[key] = source[key];
+      setProperty(destination, key, source[key]);
       overridableKeys[key] = true;
     }
   }
@@ -30365,17 +30381,7 @@ function storeMappingPair(state, _result, overridableKeys, keyTag, keyNode, valu
       throwError(state, 'duplicated mapping key');
     }
 
-    // used for this specific key only because Object.defineProperty is slow
-    if (keyNode === '__proto__') {
-      Object.defineProperty(_result, keyNode, {
-        configurable: true,
-        enumerable: true,
-        writable: true,
-        value: valueNode
-      });
-    } else {
-      _result[keyNode] = valueNode;
-    }
+    setProperty(_result, keyNode, valueNode);
     delete overridableKeys[keyNode];
   }
 
@@ -55828,16 +55834,29 @@ class HelmChart {
     }
     /**
      * template
+     * @param ignoreWarnings - Array of regex patterns to ignore in stderr. Default pattern for deprecated chart warning is always included.
      */
-    async template(dir, valueFiles, options) {
+    async template(dir, valueFiles, options, ignoreWarnings) {
         let cmdOptions = '';
         if (options !== undefined) {
             cmdOptions = options?.join(' ');
         }
         let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions;
         let result = await this.exec(cmdExec);
-        if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-            throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
+        // Default patterns that are always ignored (backward compatible)
+        const defaultPatterns = ['^WARNING: This chart is deprecated$'];
+        const patterns = ignoreWarnings ? [...defaultPatterns, ...ignoreWarnings] : defaultPatterns;
+        if (result.stderr && result.stderr.trim() !== '') {
+            const stderrLines = result.stderr
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            for (const line of stderrLines) {
+                const isIgnored = patterns.some(pattern => new RegExp(pattern).test(line));
+                if (!isIgnored) {
+                    throw new Error(`Helm Chart ${path.format(dir)} templating produced unexpected stderr: ${result.stderr}`);
+                }
+            }
         }
         if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
             throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr);
@@ -55903,6 +55922,31 @@ class HelmChart {
             return false;
         }
         return featureSection;
+    }
+    /**
+     * Reads the ignoreWarnings configuration from a pipeline section.
+     * @param dir - The directory containing the .ci.config.yaml file.
+     * @param functionName - The name of the pipeline section (e.g., 'helm-chart-validation').
+     * @returns An array of regex patterns to ignore, or undefined if not configured.
+     * @throws Error if ignoreWarnings is set to a boolean instead of an array.
+     */
+    readIgnoreWarnings(dir, functionName) {
+        const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml);
+        const rawIgnoreWarnings = this.readPipelineFeature(dir, functionName, 'ignoreWarnings');
+        if (rawIgnoreWarnings === false) {
+            return undefined; // Not set, use defaults only
+        }
+        if (typeof rawIgnoreWarnings === 'boolean') {
+            throw new Error(`Invalid configuration in ${configFilePath}: ` +
+                `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
+                `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`);
+        }
+        // Convert YAML node to plain JS array (handles YAMLSeq from yaml library)
+        const converted = rawIgnoreWarnings && typeof rawIgnoreWarnings.toJSON === 'function' ? rawIgnoreWarnings.toJSON() : rawIgnoreWarnings;
+        if (Array.isArray(converted)) {
+            return converted;
+        }
+        return undefined; // Use defaults only
     }
     readPipelineFeatureOptions(dir, functionName) {
         if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
@@ -66651,7 +66695,9 @@ async function run() {
                 if (dist_1.utils.unrapYamlbyKey(options, '--dependency-update', true)) {
                     helmOptions.push('--dependency-update');
                 }
-                await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions);
+                // Read ignoreWarnings from the section level (not inside options)
+                const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, dist_1.constants.Functionality.helmChartValidation);
+                await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings);
                 tableRows.push([item, '✅', listingYamlRelativePath]);
             }
             else {
