@@ -66,7 +66,7 @@
     ]
   },
   "dependencies": {
-    "@actions/core": "^1.11.1",
+    "@actions/core": "^3.0.0",
     "@actions/github": "^9.0.0",
     "helm-ts": "^0.1.5",
     "loglevel": "^1.9.2",
