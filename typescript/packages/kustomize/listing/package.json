@@ -22,7 +22,7 @@
   },
   "scripts": {
     "bundle": "npm run format:write && npm run package",
-    "ci-test": "npx jest",
+    "ci-test": "npx jest --forceExit",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "npx prettier --write ./src ./__test__",
     "format:check": "npx prettier --check ./src ./__test__",
