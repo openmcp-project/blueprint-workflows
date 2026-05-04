@@ -12,6 +12,7 @@
     "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "types": ["jest", "node"],
     "forceConsistentCasingInFileNames": true
   },
   "exclude": [

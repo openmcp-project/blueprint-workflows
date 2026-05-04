@@ -25,9 +25,9 @@ let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
 let noticeMock: jest.SpiedFunction<typeof core.notice>
 let startGroupMock: jest.SpiedFunction<typeof core.startGroup>
 
-const originalEnv = process.env
+const originalEnv = { ...process.env }
 
-const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString()
+const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString() || path.resolve(__dirname, '../../../../..')
 const pathHelmChartFileListing = path.parse(GITHUB_WORKSPACE + '/' + constants.HelmChartFiles.listingFile)
 
 describe('action', () => {
@@ -49,7 +49,7 @@ describe('action', () => {
   })
 
   afterEach(() => {
-    process.env = originalEnv
+    process.env = { ...originalEnv }
   })
 
   it('Missing env', async () => {
