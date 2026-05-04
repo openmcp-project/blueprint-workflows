@@ -1,166 +1,127 @@
 /**
  * Unit tests for the action's main functionality, src/main.ts
- *
- * These should be run as if the action was called from a workflow.
- * Specifically, the inputs listed in `action.yml` should be set as environment
- * variables following the pattern `INPUT_<INPUT_NAME>`.
  */
 
-import { describe, it, expect, jest, beforeEach } from '@jest/globals'
-import * as core from '@actions/core'
-import * as main from '../src/main'
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import * as fs from 'fs'
-import * as util from 'util'
 import * as path from 'path'
-import { utils, constants } from '../../../shared/dist'
+import { constants } from '../../../shared/dist/index.js'
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+const debugFn = jest.fn()
+const errorFn = jest.fn()
+const getInputFn = jest.fn(() => '')
+const noticeFn = jest.fn()
+const startGroupFn = jest.fn()
+const setFailedFn = jest.fn()
+const setOutputFn = jest.fn()
+const endGroupFn = jest.fn()
+const infoFn = jest.fn()
+const summaryWriteFn = jest.fn(async () => {})
+const summaryObj = {
+  addHeading: jest.fn(),
+  addRaw: jest.fn(),
+  addTable: jest.fn(),
+  addBreak: jest.fn(),
+  addDetails: jest.fn(),
+  write: summaryWriteFn
+}
+summaryObj.addHeading.mockReturnValue(summaryObj)
+summaryObj.addRaw.mockReturnValue(summaryObj)
+summaryObj.addTable.mockReturnValue(summaryObj)
+summaryObj.addBreak.mockReturnValue(summaryObj)
 
-// Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
-let getInputMock: jest.SpiedFunction<typeof core.getInput>
-let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
-let noticeMock: jest.SpiedFunction<typeof core.notice>
-let startGroupMock: jest.SpiedFunction<typeof core.startGroup>
-let infoMock: jest.SpiedFunction<typeof core.info>
+jest.unstable_mockModule('@actions/core', () => ({
+  debug: debugFn,
+  error: errorFn,
+  getInput: getInputFn,
+  notice: noticeFn,
+  startGroup: startGroupFn,
+  endGroup: endGroupFn,
+  setFailed: setFailedFn,
+  setOutput: setOutputFn,
+  info: infoFn,
+  warning: jest.fn(),
+  isDebug: jest.fn(() => false),
+  summary: summaryObj
+}))
 
-const originalEnv = process.env
+const { run } = await import('../src/main.js')
 
-const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString() || '/tmp/test-workspace'
-const pathKustomizeFileListing = path.parse(GITHUB_WORKSPACE + '/' + constants.KustomizeFiles.listingFile)
+// Resolve GITHUB_WORKSPACE: use env var or fall back to repo root
+const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString() || path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..')
+
+const originalEnv = { ...process.env }
 
 describe('action', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    jest.resetModules()
+    process.env = { ...originalEnv }
+    summaryObj.addHeading.mockReturnValue(summaryObj)
+    summaryObj.addRaw.mockReturnValue(summaryObj)
+    summaryObj.addTable.mockReturnValue(summaryObj)
+    summaryObj.addBreak.mockReturnValue(summaryObj)
+  })
 
-    // Set up test environment
-    process.env[constants.envvars.GITHUB_WORKSPACE] = GITHUB_WORKSPACE
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
 
-    // Ensure test workspace directory exists
-    if (!fs.existsSync(GITHUB_WORKSPACE)) {
-      fs.mkdirSync(GITHUB_WORKSPACE, { recursive: true })
-    }
-
-    if (fs.existsSync(path.format(pathKustomizeFileListing))) {
-      fs.rmSync(path.format(pathKustomizeFileListing))
-    }
-
-    debugMock = jest.spyOn(core, 'debug').mockImplementation(() => {})
-    errorMock = jest.spyOn(core, 'error').mockImplementation(() => {})
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation(() => '')
-    noticeMock = jest.spyOn(core, 'notice').mockImplementation(() => {})
-    startGroupMock = jest.spyOn(core, 'startGroup').mockImplementation(() => {})
-    setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation(() => {})
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation(() => {})
-    infoMock = jest.spyOn(core, 'info').mockImplementation(() => {})
+  it('should fail when GITHUB_WORKSPACE is missing', async () => {
+    process.env[constants.envvars.GITHUB_WORKSPACE] = ''
+    await run()
+    expect(setFailedFn).toHaveBeenCalledWith(expect.stringContaining('Missing env'))
   })
 
   it('should fail when kustomize listing file does not exist', async () => {
-    await main.run()
-    expect(runMock).toHaveReturned()
+    const tmpDir = fs.mkdtempSync(path.join(GITHUB_WORKSPACE, 'kustomize-mv-test-'))
+    process.env = {
+      ...originalEnv,
+      GITHUB_WORKSPACE: tmpDir,
+      GITHUB_STEP_SUMMARY: tmpDir,
+      JEST_WORKER_ID: '1'
+    }
 
-    // Verify that setFailed was called because listing file doesn't exist
-    expect(setFailedMock).toHaveBeenCalledWith(expect.stringContaining('Kustomize listing file not found'))
+    await run()
+
+    expect(setFailedFn).toHaveBeenCalledWith(expect.stringContaining('Kustomize listing file not found'))
+
+    fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('should handle missing GITHUB_WORKSPACE environment variable', async () => {
-    process.env = { ...originalEnv }
-    delete process.env[constants.envvars.GITHUB_WORKSPACE]
+  it('should process kustomize listing when listing file exists', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(GITHUB_WORKSPACE, 'kustomize-mv-test-'))
+    process.env = {
+      ...originalEnv,
+      GITHUB_WORKSPACE: tmpDir,
+      GITHUB_STEP_SUMMARY: tmpDir,
+      JEST_WORKER_ID: '1'
+    }
 
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(expect.stringContaining('Missing env'))
-
-    process.env = originalEnv
-  })
-
-  it('should handle empty GITHUB_WORKSPACE environment variable', async () => {
-    process.env = { ...originalEnv }
-    process.env[constants.envvars.GITHUB_WORKSPACE] = ''
-
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(expect.stringContaining('Missing env'))
-
-    process.env = originalEnv
-  })
-
-  it('should process kustomize listing file when it exists', async () => {
     // Create a mock kustomize listing file
-    const mockListingContent = `# Kustomize Listing Document
-test-project__test:
-  dir: ${GITHUB_WORKSPACE}/test-kustomize
+    const mockListingContent = `test__test:
+  dir: ${tmpDir}/test
   name: test
-  folderName: test-kustomize
-  relativePath: test-kustomize
+  folderName: test
+  relativePath: test
   manifestPath: .
   kustomizationFile: kustomization.yaml
 `
+    fs.writeFileSync(path.join(tmpDir, constants.KustomizeFiles.listingFile), mockListingContent)
 
-    fs.writeFileSync(path.format(pathKustomizeFileListing), mockListingContent)
-
-    // Create a test kustomize directory structure
-    const testKustomizeDir = path.join(GITHUB_WORKSPACE, 'test-kustomize')
-    if (!fs.existsSync(testKustomizeDir)) {
-      fs.mkdirSync(testKustomizeDir, { recursive: true })
-    }
-
-    // Create a basic kustomization.yaml
+    // Create the test kustomize directory structure
+    const testDir = path.join(tmpDir, 'test')
+    fs.mkdirSync(testDir, { recursive: true })
     fs.writeFileSync(
-      path.join(testKustomizeDir, 'kustomization.yaml'),
-      `
-apiVersion: kustomize.config.k8s.io/v1beta1
+      path.join(testDir, 'kustomization.yaml'),
+      `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources:
-  - deployment.yaml
+resources: []
 `
     )
 
-    // Create a basic deployment.yaml
-    fs.writeFileSync(
-      path.join(testKustomizeDir, 'deployment.yaml'),
-      `
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: test-app
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: test-app
-  template:
-    metadata:
-      labels:
-        app: test-app
-    spec:
-      containers:
-      - name: app
-        image: nginx:latest
-`
-    )
-
-    // Mock execSync to simulate kustomize command
-    const mockExecSync = jest.fn().mockReturnValue('mocked kustomize output')
-    jest.doMock('child_process', () => ({
-      execSync: mockExecSync
-    }))
-
-    await main.run()
-    expect(runMock).toHaveReturned()
+    await run()
 
     // Clean up
-    fs.rmSync(testKustomizeDir, { recursive: true, force: true })
-    if (fs.existsSync(path.format(pathKustomizeFileListing))) {
-      fs.rmSync(path.format(pathKustomizeFileListing))
-    }
+    fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 })

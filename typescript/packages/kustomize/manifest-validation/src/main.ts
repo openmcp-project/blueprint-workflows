@@ -1,5 +1,5 @@
 import * as core from '@actions/core'
-import { utils, constants } from '../../../shared/dist'
+import { utils, constants } from '../../../shared/dist/index.js'
 import * as path from 'path'
 import * as yaml from 'yaml'
 import * as fs from 'fs'

@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import * as constants from './constants'
+import * as constants from './constants.js'
 import * as core from '@actions/core'
 import * as jsYaml from 'js-yaml'
 import * as exec2 from '@actions/exec'

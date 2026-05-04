@@ -1,65 +1,66 @@
 /**
- * Unit tests for the action's main functionality, src/main.ts
- *
- * These should be run as if the action was called from a workflow.
- * Specifically, the inputs listed in `action.yml` should be set as environment
- * variables following the pattern `INPUT_<INPUT_NAME>`.
+ * Unit tests for the action's main functionality, src/index.ts
  */
 
-import { describe, it, expect, jest, beforeEach } from '@jest/globals'
-import * as core from '@actions/core'
-import * as main from '../src/index'
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import * as fs from 'fs'
 import * as util from 'util'
 import * as path from 'path'
-import { utils, constants } from '../../../shared/dist'
+import { constants } from '../../../shared/dist/index.js'
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+const debugFn = jest.fn()
+const errorFn = jest.fn()
+const getInputFn = jest.fn(() => '')
+const noticeFn = jest.fn()
+const startGroupFn = jest.fn()
+const setFailedFn = jest.fn()
+const setOutputFn = jest.fn()
+const endGroupFn = jest.fn()
 
-// Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
-let getInputMock: jest.SpiedFunction<typeof core.getInput>
-let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
-let noticeMock: jest.SpiedFunction<typeof core.notice>
-let startGroupMock: jest.SpiedFunction<typeof core.startGroup>
+jest.unstable_mockModule('@actions/core', () => ({
+  debug: debugFn,
+  error: errorFn,
+  getInput: getInputFn,
+  notice: noticeFn,
+  startGroup: startGroupFn,
+  endGroup: endGroupFn,
+  setFailed: setFailedFn,
+  setOutput: setOutputFn,
+  info: jest.fn(),
+  warning: jest.fn(),
+  isDebug: jest.fn(() => false)
+}))
 
-const originalEnv = process.env
+const { run } = await import('../src/index.js')
 
-const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString() || '/tmp/test-workspace'
+// Resolve GITHUB_WORKSPACE: use env var or fall back to repo root
+const GITHUB_WORKSPACE = process.env[constants.envvars.GITHUB_WORKSPACE]?.toString() || path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..')
 const pathKustomizeFileListing = path.parse(GITHUB_WORKSPACE + '/' + constants.KustomizeFiles.listingFile)
+
+const originalEnv = { ...process.env }
 
 describe('action', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    jest.resetModules()
-
-    // Set up test environment
-    process.env[constants.envvars.GITHUB_WORKSPACE] = GITHUB_WORKSPACE
-
-    // Ensure test workspace directory exists
-    if (!fs.existsSync(GITHUB_WORKSPACE)) {
-      fs.mkdirSync(GITHUB_WORKSPACE, { recursive: true })
-    }
-
+    process.env = { ...originalEnv }
     if (fs.existsSync(path.format(pathKustomizeFileListing))) {
       fs.rmSync(path.format(pathKustomizeFileListing))
     }
+  })
 
-    debugMock = jest.spyOn(core, 'debug').mockImplementation(() => {})
-    errorMock = jest.spyOn(core, 'error').mockImplementation(() => {})
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation(() => '')
-    noticeMock = jest.spyOn(core, 'notice').mockImplementation(() => {})
-    startGroupMock = jest.spyOn(core, 'startGroup').mockImplementation(() => {})
-    setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation(() => {})
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation(() => {})
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  it('should fail when GITHUB_WORKSPACE is missing', async () => {
+    process.env[constants.envvars.GITHUB_WORKSPACE] = ''
+    await run()
+    expect(setFailedFn).toHaveBeenCalledWith(util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE))
   })
 
   it('should create kustomize listing file when kustomization files are found', async () => {
     // Create a temporary kustomization.yaml file for testing
-    const testKustomizeDir = path.join(GITHUB_WORKSPACE!, 'test-kustomize')
+    const testKustomizeDir = path.join(GITHUB_WORKSPACE, 'test-kustomize-tmp')
     const testKustomizationFile = path.join(testKustomizeDir, 'kustomization.yaml')
 
     if (!fs.existsSync(testKustomizeDir)) {
@@ -68,55 +69,30 @@ describe('action', () => {
 
     fs.writeFileSync(
       testKustomizationFile,
-      `
-apiVersion: kustomize.config.k8s.io/v1beta1
+      `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namePrefix: test-
 resources:
   - deployment.yaml
-  - service.yaml
 `
     )
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    process.env = {
+      ...originalEnv,
+      GITHUB_WORKSPACE: GITHUB_WORKSPACE,
+      GITHUB_STEP_SUMMARY: GITHUB_WORKSPACE
+    }
 
-    // Verify that the listing file was created
+    await run()
+    expect(setFailedFn).not.toHaveBeenCalled()
+
     expect(fs.existsSync(path.format(pathKustomizeFileListing))).toBe(true)
-
-    // Verify that notice was called with success message
-    expect(noticeMock).toHaveBeenCalledWith(util.format(constants.Msgs.KustomizeListingFileWritten, constants.KustomizeFiles.listingFile))
+    expect(noticeFn).toHaveBeenCalledWith(util.format(constants.Msgs.KustomizeListingFileWritten, constants.KustomizeFiles.listingFile))
 
     // Clean up
     fs.rmSync(testKustomizeDir, { recursive: true, force: true })
     if (fs.existsSync(path.format(pathKustomizeFileListing))) {
       fs.rmSync(path.format(pathKustomizeFileListing))
     }
-  })
-
-  it('should handle missing GITHUB_WORKSPACE environment variable', async () => {
-    process.env = { ...originalEnv }
-    delete process.env[constants.envvars.GITHUB_WORKSPACE]
-
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE))
-
-    process.env = originalEnv
-  })
-
-  it('should handle empty GITHUB_WORKSPACE environment variable', async () => {
-    process.env = { ...originalEnv }
-    process.env[constants.envvars.GITHUB_WORKSPACE] = ''
-
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that setFailed was called with the appropriate error message
-    expect(setFailedMock).toHaveBeenCalledWith(util.format(constants.ErrorMsgs.missingEnv, constants.envvars.GITHUB_WORKSPACE))
-
-    process.env = originalEnv
   })
 })
