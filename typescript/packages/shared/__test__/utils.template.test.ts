@@ -2,18 +2,17 @@
  * Unit tests for HelmChart.template ignoreWarnings functionality
  */
 
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import * as path from 'path'
-import { HelmChart } from '../src/utils'
+import { HelmChart } from '../src/utils.js'
 
 describe('HelmChart.template ignoreWarnings parameter', () => {
   let helmChart: HelmChart
-  let execMock: jest.SpyInstance
+  let execMock: ReturnType<typeof jest.spyOn>
 
   beforeEach(() => {
     jest.clearAllMocks()
     helmChart = HelmChart.getInstance()
-
-    // Mock the exec method
     execMock = jest.spyOn(helmChart, 'exec')
   })
 
@@ -109,7 +108,6 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'WARNING: This chart is deprecated'
       })
 
-      // Default pattern should still work even with custom patterns
       const result = await helmChart.template(dir, valueFiles, [], ignoreWarnings)
 
       expect(result).toBe('some valid manifest content here with sufficient length to pass validation checks')
@@ -164,7 +162,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
     it('should handle wildcard pattern to ignore all warnings', async () => {
       const dir = path.parse('/test/helm-chart')
       const valueFiles = '-f /test/helm-chart/values.yaml'
-      const ignoreWarnings = ['.*'] // match everything
+      const ignoreWarnings = ['.*']
 
       execMock.mockResolvedValue({
         exitCode: 0,

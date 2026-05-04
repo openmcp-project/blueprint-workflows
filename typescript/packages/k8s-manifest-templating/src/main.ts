@@ -1,5 +1,5 @@
 import * as core from '@actions/core'
-import { utils, constants } from '../../../../typescript/packages/shared/'
+import { utils, constants } from '../../../../typescript/packages/shared/dist/index.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'

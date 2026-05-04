@@ -6,7 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
 import * as util from 'util'
-import { utils, constants } from '../../../shared/dist'
+import { utils, constants } from '../../../shared/dist/index.js'
 
 /**
  * The main function for the action.

@@ -1,0 +1,478 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'yaml';
+import * as constants from './constants.js';
+import * as core from '@actions/core';
+import * as jsYaml from 'js-yaml';
+import * as exec2 from '@actions/exec';
+//const exec2 = require('@actions/exec');
+//import * as io from '@actions/io'
+export function assertNullOrEmpty(input, msg) {
+    if (input === null || input.length == 0) {
+        throw new Error(msg);
+    }
+}
+export function checkRequiredInput(inputKey) {
+    const input = core.getInput(inputKey);
+    assertNullOrEmpty(input, 'Missing value for input `' + inputKey + '`!');
+    return input;
+}
+export function lookup(dir, lookupFile, results = []) {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+            // Check if lookupFile exists in this directory
+            if (fs.existsSync(path.join(filePath, lookupFile))) {
+                results.push(filePath);
+            }
+            // lookup into the subdirectory
+            lookup(filePath, lookupFile, results);
+        }
+    }
+    return results;
+}
+export function findYamlKeyByDir(yamlContent, targetDir) {
+    // Parse the YAML content
+    const parsedYaml = jsYaml.load(yamlContent);
+    // Iterate through the keys of the YAML object
+    for (const key in parsedYaml) {
+        if (parsedYaml[key]?.dir === targetDir) {
+            return key; // Return the key if the dir matches the targetDir
+        }
+    }
+    return null; // Return null if no match is found
+}
+export function readYamlFile(dir) {
+    if (fs.existsSync(path.format(dir)) === false) {
+        return false;
+    }
+    const fileContent = fs.readFileSync(path.format(dir), { encoding: 'utf8' });
+    return yaml.parseDocument(fileContent);
+}
+export function isFunctionEnabled(dir, functionName, defaultBehavior = true) {
+    if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+        return defaultBehavior;
+    }
+    const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)));
+    let ciConfigFileDocFunction = ciConfigFileDoc.get(functionName);
+    // put this out of listing core functionality and move it to the respective action (e.g. helm chart validation / helm docs generation / helm version bump / yamllint ect...)
+    if (ciConfigFileDoc.has(functionName) && ciConfigFileDocFunction.has(constants.Yaml.enable) && ciConfigFileDocFunction.get(constants.Yaml.enable).toString() == 'true') {
+        core.debug(functionName + ' - enabled=' + ciConfigFileDocFunction.get(constants.Yaml.enable).toString());
+        return true;
+    }
+    else if (ciConfigFileDoc.has(functionName) && ciConfigFileDocFunction.has(constants.Yaml.enable) && ciConfigFileDocFunction.get(constants.Yaml.enable).toString() == 'false') {
+        core.debug(functionName + ' - enabled=' + ciConfigFileDocFunction.get(constants.Yaml.enable).toString());
+        return false;
+    }
+    return defaultBehavior;
+}
+export function isFileFoundInPath(file, dir, cwd) {
+    let dirName = path.dirname(path.format(dir));
+    dirName = path.format(cwd) + '/' + dirName;
+    core.debug('dirname:' + dirName + ' file:' + file);
+    if (fs.existsSync(dirName + '/' + file)) {
+        return dirName;
+    }
+    if (dirName === '/' || dirName === '.' || dirName === path.format(cwd) || dirName === path.format(cwd) + '/.') {
+        return false;
+    }
+    return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
+}
+export const removeDuplicatesFromStringArray = (arr) => {
+    let unique = arr.reduce(function (acc, curr) {
+        if (!acc.includes(curr))
+            acc.push(curr);
+        return acc;
+    }, []);
+    return unique;
+};
+export function unrapYamlbyKey(yamlDoc, key, defaultValue) {
+    let listingYamlItem = yamlDoc.get(key);
+    if (listingYamlItem === undefined) {
+        if (defaultValue === undefined) {
+            core.debug('Yaml Document:' + yaml.stringify(yamlDoc));
+            throw new CustomError('Unabel to read yaml key `' + key + '` of yaml document!');
+        }
+        return defaultValue;
+    }
+    if (listingYamlItem === null || listingYamlItem.length == 0) {
+        return defaultValue;
+    }
+    return listingYamlItem;
+}
+export class Git {
+    static instance;
+    constructor() { }
+    static getInstance() {
+        if (this.instance) {
+            return this.instance;
+        }
+        this.instance = new Git();
+        return this.instance;
+    }
+    /**
+     * commit
+     */
+    async add(pathspec, cwd) {
+        let cmdCommand = 'git add "' + path.format(pathspec) + '"';
+        return await this.exec(cmdCommand, [], { cwd: cwd });
+    }
+    async diff(tag = 'HEAD', cwd) {
+        let cmdCommand = 'git diff --name-only ' + tag;
+        return await this.exec(cmdCommand, [], { cwd: cwd });
+    }
+    async status(cwd) {
+        let cmdCommand = 'git status --porcelain';
+        return await this.exec(cmdCommand, [], { cwd: cwd });
+    }
+    async push(cwd) {
+        let cmdCommand = 'git push';
+        return await this.exec(cmdCommand, [], { cwd: cwd });
+    }
+    async commit(message, cwd) {
+        let cmdCommand2 = 'git commit -am "' + message + '"';
+        return await this.exec(cmdCommand2, [], { cwd: cwd });
+    }
+    async exec(commandLine, args, execOptions) {
+        let stdOut = '';
+        let stdErr = '';
+        let silient = true;
+        if (core.isDebug()) {
+            silient = false;
+        }
+        let options = {
+            silent: silient,
+            failOnStdErr: false
+        };
+        if (execOptions !== undefined) {
+            options = { ...options, ...execOptions };
+        }
+        options.listeners = {
+            stdout: (data) => {
+                stdOut += data.toString();
+            },
+            stderr: (data) => {
+                stdErr += data.toString();
+            }
+        };
+        core.debug('commandLine: `' + commandLine + '` args: `' + args?.join(' ') + '`');
+        let exitCode = await exec2.exec(commandLine, args, options);
+        core.debug('exitCode: `' + exitCode + '` stdout: "' + stdOut + '" stderror: "' + stdErr + '"');
+        return { exitCode: exitCode, stdout: stdOut, stderr: stdErr };
+    }
+}
+export class HelmChart {
+    static instance;
+    constructor() { }
+    static getInstance() {
+        if (this.instance) {
+            return this.instance;
+        }
+        this.instance = new HelmChart();
+        return this.instance;
+    }
+    async exec(commandLine, args, execOptions) {
+        let stdOut = '';
+        let stdErr = '';
+        let options = {
+            silent: false,
+            failOnStdErr: false
+        };
+        if (execOptions !== undefined) {
+            options = { ...options, ...execOptions };
+        }
+        options.listeners = {
+            stdout: (data) => {
+                stdOut += data.toString();
+            },
+            stderr: (data) => {
+                stdErr += data.toString();
+            }
+        };
+        core.debug('commandLine: `' + commandLine + '` args: `' + args?.join(' ') + '`');
+        let exitCode = await exec2.exec(commandLine, args, options);
+        core.debug('exitCode: `' + exitCode + '` stdout: "' + stdOut + '" stderror: "' + stdErr + '"');
+        return { exitCode: exitCode, stdout: stdOut, stderr: stdErr };
+    }
+    async listRepositories() {
+        let cmdExec = 'helm repo list -o yaml';
+        let result = await this.exec(cmdExec, []);
+        if (result.stderr) {
+            throw new Error(this.listRepositories.name + '() ' + result.stderr);
+        }
+        return result.stdout;
+    }
+    isRepositoryAdded(repositoryList, helmRepositoryUrl) {
+        let helmRepoListDoc = yaml.parse(repositoryList);
+        // Loop through the YAML data and find the matching URL
+        for (const item of helmRepoListDoc) {
+            if (item.url === helmRepositoryUrl) {
+                core.debug('Found Helm Repository Url with alias `' + item.name + '` [url: `' + item.url + '`');
+                return true;
+            }
+        }
+        core.debug('Did NOT find Helm Repository Url: `' + helmRepositoryUrl + '`');
+        return false;
+    }
+    async addRepository(HELM_REPOSITORY_NAME, HELM_REPOSITORY_URL, HELM_REPO_USERNAME, HELM_REPO_TOKEN) {
+        //
+        let args = [
+            'repo',
+            'add',
+            ' "' + HELM_REPOSITORY_NAME + '"',
+            ' "' + HELM_REPOSITORY_URL + '"',
+            ' --username "' + HELM_REPO_USERNAME + '"',
+            ' --password "' + HELM_REPO_TOKEN + '"'
+        ];
+        let cmdExec = 'helm ' + args.join(' ');
+        let result = await this.exec(cmdExec);
+        if (result.stderr) {
+            throw new Error(this.addRepository.name + '() ' + result.stderr);
+        }
+        return result.stdout;
+    }
+    // TODO: refactor .github/actions/helm-chart/dep-build/src/main.ts here?
+    dependencyUpdate(filePath) {
+        this.listRepositories();
+    }
+    getListingFileContent(filePath) {
+        const filePathWet = path.join(path.format(filePath), constants.HelmChartFiles.listingFile);
+        if (fs.existsSync(filePathWet)) {
+            return fs.readFileSync(filePathWet, { encoding: 'utf8' });
+        }
+        else {
+            throw new Error('File ' + filePathWet + ' not found!');
+        }
+    }
+    /**
+     * template
+     * @param ignoreWarnings - Array of regex patterns to ignore in stderr. Default pattern for deprecated chart warning is always included.
+     */
+    async template(dir, valueFiles, options, ignoreWarnings) {
+        let cmdOptions = '';
+        if (options !== undefined) {
+            cmdOptions = options?.join(' ');
+        }
+        let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions;
+        let result = await this.exec(cmdExec);
+        // Default patterns that are always ignored (backward compatible)
+        const defaultPatterns = ['^WARNING: This chart is deprecated$'];
+        const patterns = ignoreWarnings ? [...defaultPatterns, ...ignoreWarnings] : defaultPatterns;
+        if (result.stderr && result.stderr.trim() !== '') {
+            const stderrLines = result.stderr
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            for (const line of stderrLines) {
+                const isIgnored = patterns.some(pattern => new RegExp(pattern).test(line));
+                if (!isIgnored) {
+                    throw new Error(`Helm Chart ${path.format(dir)} templating produced unexpected stderr: ${result.stderr}`);
+                }
+            }
+        }
+        if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
+            throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr);
+        }
+        if (result.exitCode !== 0 && result.stderr) {
+            throw new Error(this.lint.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
+        }
+        return result.stdout;
+    }
+    /**
+     *
+     */
+    getHelmValueFiles(dir) {
+        let helmValueFiles = '-f ' + path.join(path.format(dir), constants.HelmChartFiles.valuesYaml);
+        if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.valuesCiYaml))) {
+            helmValueFiles = helmValueFiles + ' -f ' + path.join(path.format(dir), constants.HelmChartFiles.valuesCiYaml);
+        }
+        else {
+            core.debug(this.getHelmValueFiles.name + ' Didnt find ' + constants.HelmChartFiles.valuesCiYaml + ' in ' + path.format(dir));
+        }
+        return helmValueFiles;
+    }
+    async DependencyUpdate(dir) {
+        let cmdExec = 'helm dependency update ' + path.format(dir);
+        let result = await this.exec(cmdExec, []);
+        if (result.exitCode !== 0) {
+            throw new Error(this.DependencyUpdate.name + '() failed with exit code: ' + result.exitCode);
+        }
+        return result.stdout;
+    }
+    async lint(dir, options) {
+        let helmValueFiles = this.getHelmValueFiles(dir);
+        let cmdOptions = '';
+        if (options !== undefined) {
+            cmdOptions = options?.join(' ');
+        }
+        let cmdExec = 'helm lint ' + path.format(dir) + ' ' + helmValueFiles + ' ' + cmdOptions;
+        let result = await this.exec(cmdExec);
+        if (result.exitCode !== 0 && result.stderr) {
+            throw new Error(this.lint.name + '() exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
+        }
+        return result.stdout;
+    }
+    /**
+     * Reads a specific feature section from a YAML configuration file for a given function name and feature name.
+     * @param dir - Directory path as a path.FormatInputPathObject.
+     * @param functionName - The name of the function section in the YAML.
+     * @param featureName - The name of the feature to retrieve within the function section.
+     * @returns The feature object if found, or false if not present.
+     */
+    readPipelineFeature(dir, functionName, featureName) {
+        const configPath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml);
+        if (!fs.existsSync(configPath)) {
+            return false;
+        }
+        const ciConfigFileDoc = readYamlFile(path.parse(configPath));
+        const functionSection = unrapYamlbyKey(ciConfigFileDoc, functionName, false);
+        if (functionSection === false) {
+            return false;
+        }
+        const featureSection = unrapYamlbyKey(functionSection, featureName, false);
+        if (featureSection === false) {
+            return false;
+        }
+        return featureSection;
+    }
+    /**
+     * Reads the ignoreWarnings configuration from a pipeline section.
+     * @param dir - The directory containing the .ci.config.yaml file.
+     * @param functionName - The name of the pipeline section (e.g., 'helm-chart-validation').
+     * @returns An array of regex patterns to ignore, or undefined if not configured.
+     * @throws Error if ignoreWarnings is set to a boolean instead of an array.
+     */
+    readIgnoreWarnings(dir, functionName) {
+        const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml);
+        const rawIgnoreWarnings = this.readPipelineFeature(dir, functionName, 'ignoreWarnings');
+        if (rawIgnoreWarnings === false) {
+            return undefined; // Not set, use defaults only
+        }
+        if (typeof rawIgnoreWarnings === 'boolean') {
+            throw new Error(`Invalid configuration in ${configFilePath}: ` +
+                `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
+                `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`);
+        }
+        // Convert YAML node to plain JS array (handles YAMLSeq from yaml library)
+        const converted = rawIgnoreWarnings && typeof rawIgnoreWarnings.toJSON === 'function' ? rawIgnoreWarnings.toJSON() : rawIgnoreWarnings;
+        if (Array.isArray(converted)) {
+            return converted;
+        }
+        return undefined; // Use defaults only
+    }
+    readPipelineFeatureOptions(dir, functionName) {
+        if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
+            return false;
+        }
+        const ciConfigFileDoc = readYamlFile(path.parse(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)));
+        if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
+            return false;
+        }
+        const yamlContent = unrapYamlbyKey(ciConfigFileDoc, functionName);
+        if (unrapYamlbyKey(yamlContent, 'options', false) === false) {
+            return false;
+        }
+        return unrapYamlbyKey(yamlContent, 'options');
+    }
+    async generateReadmeDocumentation(dir, templateFiles, options) {
+        let helmDocsTemplateFiles = [];
+        for (const templateFile of templateFiles) {
+            if (fs.existsSync(templateFile)) {
+                helmDocsTemplateFiles.push(templateFile);
+            }
+            else {
+                core.debug('File ' + templateFile + ' not found!');
+            }
+        }
+        const templateFilesStr = helmDocsTemplateFiles.map(item => '--template-files "' + item + '"').join(' ');
+        let cmdOptions = '';
+        if (options !== undefined) {
+            cmdOptions = options?.join(' ');
+        }
+        let cmdExec = 'helm-docs ' + templateFilesStr + ' ' + cmdOptions + ' --chart-search-root="' + path.format(dir) + '"' + ' --log-level debug';
+        let result = await this.exec(cmdExec);
+        if (result.exitCode !== 0 && result.stderr) {
+            throw new Error(this.generateReadmeDocumentation.name + '() exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
+        }
+        return result.stdout;
+    }
+}
+export class Kustomize {
+    static instance;
+    constructor() { }
+    static getInstance() {
+        if (this.instance) {
+            return this.instance;
+        }
+        this.instance = new Kustomize();
+        return this.instance;
+    }
+    async exec(commandLine, args, execOptions) {
+        let stdOut = '';
+        let stdErr = '';
+        let options = {
+            silent: false,
+            failOnStdErr: false
+        };
+        if (execOptions !== undefined) {
+            options = { ...options, ...execOptions };
+        }
+        options.listeners = {
+            stdout: (data) => {
+                stdOut += data.toString();
+            },
+            stderr: (data) => {
+                stdErr += data.toString();
+            }
+        };
+        core.debug('commandLine: `' + commandLine + '` args: `' + args?.join(' ') + '`');
+        let exitCode = await exec2.exec(commandLine, args, options);
+        core.debug('exitCode: `' + exitCode + '` stdout: "' + stdOut + '" stderror: "' + stdErr + '"');
+        return { exitCode: exitCode, stdout: stdOut, stderr: stdErr };
+    }
+    getListingFileContent(filePath) {
+        const filePathWet = path.join(path.format(filePath), constants.KustomizeFiles.listingFile);
+        if (fs.existsSync(filePathWet)) {
+            return fs.readFileSync(filePathWet, { encoding: 'utf8' });
+        }
+        else {
+            throw new Error('File ' + filePathWet + ' not found!');
+        }
+    }
+    /**
+     * Reads or creates a .version file for a kustomize project
+     * @param dir - Directory path
+     * @returns The version string from the .version file, or "0.0.0" if file doesn't exist
+     */
+    readOrCreateVersionFile(dir) {
+        const versionFilePath = path.join(dir, '.version');
+        if (fs.existsSync(versionFilePath)) {
+            const versionContent = fs.readFileSync(versionFilePath, { encoding: 'utf8' }).trim();
+            return versionContent || '0.0.0';
+        }
+        else {
+            // Create .version file with default version 0.0.0
+            fs.writeFileSync(versionFilePath, '0.0.0', { encoding: 'utf8' });
+            return '0.0.0';
+        }
+    }
+    /**
+     * Writes version to .version file
+     * @param dir - Directory path
+     * @param version - Version string to write
+     */
+    writeVersionFile(dir, version) {
+        const versionFilePath = path.join(dir, '.version');
+        fs.writeFileSync(versionFilePath, version, { encoding: 'utf8' });
+    }
+}
+export class CustomError extends Error {
+    constructor(message) {
+        super(message); // Call the constructor of the base class `Error`
+        this.name = 'CustomError'; // Set the error name to your custom error class name
+        // Set the prototype explicitly to maintain the correct prototype chain
+        Object.setPrototypeOf(this, CustomError.prototype);
+    }
+}
