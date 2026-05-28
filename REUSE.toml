@@ -8,3 +8,11 @@ path = "**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Copyright OpenControlPlane contributors."
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "**/dist/*"
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+    "Copyright OpenControlPlane contributors.",
+    "Additional copyright holders of dependencies used are contained in licenses.txt."
+]
