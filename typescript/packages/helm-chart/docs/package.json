@@ -68,7 +68,7 @@
   "dependencies": {
     "@actions/core": "^1.11.1",
     "helm-ts": "^0.1.5",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.0.0",
     "loglevel": "^1.9.2",
     "node-helm": "^0.1.0",
     "semver": "^7.6.3",
