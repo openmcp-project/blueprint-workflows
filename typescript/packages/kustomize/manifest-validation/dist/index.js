@@ -30115,7 +30115,7 @@ function State (input, options) {
   this.json = options['json'] || false
   this.listener = options['listener'] || null
   this.maxDepth = typeof options['maxDepth'] === 'number' ? options['maxDepth'] : 100
-  this.maxMergeSeqLength = typeof options['maxMergeSeqLength'] === 'number' ? options['maxMergeSeqLength'] : 20
+  this.maxTotalMergeKeys = typeof options['maxTotalMergeKeys'] === 'number' ? options['maxTotalMergeKeys'] : 10000
 
   this.implicitTypes = this.schema.compiledImplicit
   this.typeMap = this.schema.compiledTypeMap
@@ -30126,6 +30126,7 @@ function State (input, options) {
   this.lineStart = 0
   this.lineIndent = 0
   this.depth = 0
+  this.totalMergeKeys = 0
 
   // position of first leading tab in the current line,
   // used to make sure there are no tabs in the indentation
@@ -30343,6 +30344,10 @@ function mergeMappings (state, destination, source, overridableKeys) {
   for (let index = 0, quantity = sourceKeys.length; index < quantity; index += 1) {
     const key = sourceKeys[index]
 
+    if (state.maxTotalMergeKeys !== -1 && ++state.totalMergeKeys > state.maxTotalMergeKeys) {
+      throwError(state, 'merge keys exceeded maxTotalMergeKeys (' + state.maxTotalMergeKeys + ')')
+    }
+
     if (!_hasOwnProperty.call(destination, key)) {
       setProperty(destination, key, source[key])
       overridableKeys[key] = true
@@ -30384,17 +30389,8 @@ function storeMappingPair (state, _result, overridableKeys, keyTag, keyNode, val
 
   if (keyTag === 'tag:yaml.org,2002:merge') {
     if (Array.isArray(valueNode)) {
-      if (valueNode.length > state.maxMergeSeqLength) {
-        throwError(state, 'merge sequence length exceeded maxMergeSeqLength (' + state.maxMergeSeqLength + ')')
-      }
-      const seen = new Set()
       for (let index = 0, quantity = valueNode.length; index < quantity; index += 1) {
-        const src = valueNode[index]
-        // Existing keys are not overridden on merge, so dedupe sources to
-        // avoid redundant work on repeated aliases.
-        if (seen.has(src)) continue
-        seen.add(src)
-        mergeMappings(state, _result, src, overridableKeys)
+        mergeMappings(state, _result, valueNode[index], overridableKeys)
       }
     } else {
       mergeMappings(state, _result, valueNode, overridableKeys)
@@ -32353,7 +32349,7 @@ function resolveYamlFloat (data) {
     return false
   }
 
-  if (Number.isFinite(parseFloat(data, 10))) {
+  if (isFinite(parseFloat(data, 10))) {
     return true
   }
 
@@ -32481,7 +32477,7 @@ function resolveYamlInteger (data) {
         if (ch !== '0' && ch !== '1') return false
         hasDigits = true
       }
-      return hasDigits && Number.isFinite(parseYamlInteger(data))
+      return hasDigits && isFinite(parseYamlInteger(data))
     }
 
     if (ch === 'x') {
@@ -32492,7 +32488,7 @@ function resolveYamlInteger (data) {
         if (!isHexCode(data.charCodeAt(index))) return false
         hasDigits = true
       }
-      return hasDigits && Number.isFinite(parseYamlInteger(data))
+      return hasDigits && isFinite(parseYamlInteger(data))
     }
 
     if (ch === 'o') {
@@ -32503,7 +32499,7 @@ function resolveYamlInteger (data) {
         if (!isOctCode(data.charCodeAt(index))) return false
         hasDigits = true
       }
-      return hasDigits && Number.isFinite(parseYamlInteger(data))
+      return hasDigits && isFinite(parseYamlInteger(data))
     }
   }
 
@@ -32518,7 +32514,7 @@ function resolveYamlInteger (data) {
 
   if (!hasDigits) return false
 
-  return Number.isFinite(parseYamlInteger(data))
+  return isFinite(parseYamlInteger(data))
 }
 
 function parseYamlInteger (data) {
