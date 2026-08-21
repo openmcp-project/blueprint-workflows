@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
+    "github>openmcp-project/.github:renovate-config",
     ":prImmediately",
     ":prHourlyLimitNone",
     ":prConcurrentLimitNone",
