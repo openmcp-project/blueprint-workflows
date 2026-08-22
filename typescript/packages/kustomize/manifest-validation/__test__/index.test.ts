@@ -10,9 +10,12 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals'
 import * as core from '@actions/core'
 import * as main from '../src/main'
 import * as fs from 'fs'
-import * as util from 'util'
 import * as path from 'path'
 import { utils, constants } from '../../../shared/dist'
+
+jest.mock('child_process', () => ({
+  execSync: jest.fn().mockReturnValue('mocked kustomize output')
+}))
 
 // Mock the action's main function
 const runMock = jest.spyOn(main, 'run')
@@ -57,6 +60,13 @@ describe('action', () => {
     setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation(() => {})
     setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation(() => {})
     infoMock = jest.spyOn(core, 'info').mockImplementation(() => {})
+
+    jest.spyOn(core.summary, 'addHeading').mockReturnValue(core.summary)
+    jest.spyOn(core.summary, 'addRaw').mockReturnValue(core.summary)
+    jest.spyOn(core.summary, 'addTable').mockReturnValue(core.summary)
+    jest.spyOn(core.summary, 'addBreak').mockReturnValue(core.summary)
+    jest.spyOn(core.summary, 'addDetails').mockReturnValue(core.summary)
+    jest.spyOn(core.summary, 'write').mockResolvedValue(core.summary)
   })
 
   it('should fail when kustomize listing file does not exist', async () => {
@@ -147,12 +157,6 @@ spec:
         image: nginx:latest
 `
     )
-
-    // Mock execSync to simulate kustomize command
-    const mockExecSync = jest.fn().mockReturnValue('mocked kustomize output')
-    jest.doMock('child_process', () => ({
-      execSync: mockExecSync
-    }))
 
     await main.run()
     expect(runMock).toHaveReturned()
