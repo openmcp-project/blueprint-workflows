@@ -50,7 +50,8 @@
       "/dist/"
     ],
     "transform": {
-      "^.+\\.ts$": "ts-jest"
+      "^.+\\.ts$": "ts-jest",
+      "^.+\\.js$": "babel-jest"
     },
     "coverageReporters": [
       "json-summary",
@@ -60,10 +61,13 @@
     "collectCoverage": true,
     "collectCoverageFrom": [
       "./src/**"
+    ],
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(@actions)/)"
     ]
   },
   "dependencies": {
-    "@actions/core": "^2.0.0",
+    "@actions/core": "^3.0.0",
     "helm-ts": "^0.1.5",
     "js-yaml": "^4.1.0",
     "loglevel": "^1.9.2",
