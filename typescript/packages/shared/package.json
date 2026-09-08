@@ -95,6 +95,6 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "overrides": {
-    "undici": ">=6.28.1"
+    "undici": ">=8.0.0"
   }
 }
