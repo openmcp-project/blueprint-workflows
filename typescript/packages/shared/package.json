@@ -93,5 +93,8 @@
     "typescript": "6.0.3"
   },
   "main": "dist/index.js",
-  "types": "dist/index.d.ts"
+  "types": "dist/index.d.ts",
+  "overrides": {
+    "undici": ">=6.28.1"
+  }
 }
