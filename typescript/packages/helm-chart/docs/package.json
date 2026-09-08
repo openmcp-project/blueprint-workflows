@@ -93,7 +93,7 @@
     "prettier": "3.9.6",
     "prettier-eslint": "17.1.2",
     "ts-jest": "29.4.12",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "overrides": {
     "undici": ">=8.0.0"
