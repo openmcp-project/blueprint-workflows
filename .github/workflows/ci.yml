@@ -15,6 +15,10 @@ env:
   HELM_DOCS_PLATFORM: "Linux_x86_64"
 
 jobs:
+  check-dist:
+    name: Check dist/ (generated JS)
+    uses: ./.github/workflows/check-dist.yml
+
   test-typescript:
     name: TS & Action Tests
     runs-on: [ubuntu-latest] 
