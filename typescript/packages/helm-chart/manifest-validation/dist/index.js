@@ -91915,7 +91915,7 @@ class Git {
         return await this.exec(cmdCommand, [], { cwd: cwd });
     }
     async commit(message, cwd) {
-        let cmdCommand2 = 'git commit -am "' + message + '"';
+        let cmdCommand2 = 'git commit -s -am "' + message + '"';
         return await this.exec(cmdCommand2, [], { cwd: cwd });
     }
     async exec(commandLine, args, execOptions) {

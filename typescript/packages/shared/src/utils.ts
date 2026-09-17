@@ -152,7 +152,7 @@ export class Git {
   }
 
   public async commit(message: string, cwd?: string) {
-    let cmdCommand2: string = 'git commit -am "' + message + '"'
+    let cmdCommand2: string = 'git commit -s -am "' + message + '"'
     return await this.exec(cmdCommand2, [], { cwd: cwd })
   }
 
