@@ -145,3 +145,8 @@ jobs:
           status: ${{ job.status }}
           sha: ${{ env.commit }}
           targetUrl: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  check-dist:
+    name: Check dist/ (generated JS)
+    needs: [test-typescript]
+    uses: ./.github/workflows/check-dist.yml
