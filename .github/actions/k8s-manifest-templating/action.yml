@@ -7,5 +7,5 @@ branding:
   color: 'red'
 
 runs:
-  using: node20
+  using: node24
   main: ../../../typescript/packages/k8s-manifest-templating/dist/index.js
