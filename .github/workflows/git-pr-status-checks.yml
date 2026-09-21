@@ -56,10 +56,10 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
             
       - id: helm-chart-listing
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
 
       - id: kustomize-listing
-        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/listing@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/listing@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
 
       # Workflow supports only one helm repo add for now. If you need to add multiple helm repos, you need to copy and modify this workflow.
       - id: helm-repo-add
@@ -92,26 +92,26 @@ jobs:
           fi
 
       - id: helm-chart-build-dependencies
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/dep-build@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/dep-build@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
       
       - id: helm-chart-linting
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/linting@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/linting@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
       
       - id: helm-chart-manifest-validation
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
 
       - id: kustomize-manifest-validation
-        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/manifest-validation@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/manifest-validation@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
 
       - id: helm-chart-version-bump
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/version-bump@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
           TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
 
       - id: kustomize-version-bump
-        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/version-bump@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/version-bump@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
         with:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
           SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
@@ -143,10 +143,10 @@ jobs:
           ############################################################
         
       - id: helm-chart-docs
-        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/docs@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
       
       - id: k8s-manifest-templating
-        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@9ae7db8544f8872d10e97d66ce2e761b67c0d6d6" # main
+        uses: "openmcp-project/blueprint-workflows/.github/actions/k8s-manifest-templating@cf5dd17463dfd2658c67589e6c111f522e6b268a" # main
       
       - name: Get commit SHA
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
