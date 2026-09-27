@@ -7926,7 +7926,6 @@ const { addAbortListener } = __nccwpck_require__(8474)
 const { Readable } = __nccwpck_require__(7075)
 const { RequestAbortedError, NotSupportedError, InvalidArgumentError, AbortError } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
-const { ReadableStreamFrom } = __nccwpck_require__(3440)
 
 const kConsume = Symbol('kConsume')
 const kReading = Symbol('kReading')
@@ -8167,7 +8166,7 @@ class BodyReadable extends Readable {
    */
   get body () {
     if (!this[kBody]) {
-      this[kBody] = ReadableStreamFrom(this)
+      this[kBody] = ReadableStream.from(this)
       if (this[kConsume]) {
         // TODO: Is this the best way to force a lock?
         this[kBody].getReader() // Ensure stream is locked.
@@ -10745,9 +10744,21 @@ class Request {
     }
   }
 
-  onRequestUpgrade (statusCode, headers, socket) {
+  /**
+   * @param {number} statusCode
+   * @param {Buffer[]|string[]|import('../../types/header.d.ts').IncomingHttpHeaders} headers
+   * @param {import('node:stream').Duplex} socket
+   * @param {string} [statusText]
+   */
+  onRequestUpgrade (statusCode, headers, socket, statusText = '') {
+    this.onFinally()
+
     assert(!this.aborted)
     assert(!this.completed)
+
+    if (channels.headers.hasSubscribers) {
+      channels.headers.publish({ request: this, response: { statusCode, headers, statusText } })
+    }
 
     const controller = this[kController]
     if (controller) {
@@ -10756,7 +10767,16 @@ class Request {
 
     const parsedHeaders = Array.isArray(headers) ? parseHeaders(headers) : headers
 
-    return this[kHandler].onRequestUpgrade?.(controller, statusCode, parsedHeaders, socket)
+    const result = this[kHandler].onRequestUpgrade?.(controller, statusCode, parsedHeaders, socket)
+
+    if (!this.aborted) {
+      this.completed = true
+      if (channels.trailers.hasSubscribers) {
+        channels.trailers.publish({ request: this, trailers: [] })
+      }
+    }
+
+    return result
   }
 
   onResponseEnd (trailers) {
@@ -12481,44 +12501,6 @@ function getSocketInfo (socket) {
 }
 
 /**
- * @param {Iterable} iterable
- * @returns {ReadableStream}
- */
-function ReadableStreamFrom (iterable) {
-  // We cannot use ReadableStream.from here because it does not return a byte stream.
-
-  let iterator
-  return new ReadableStream(
-    {
-      start () {
-        iterator = iterable[Symbol.asyncIterator]()
-      },
-      pull (controller) {
-        return iterator.next().then(({ done, value }) => {
-          if (done) {
-            return queueMicrotask(() => {
-              controller.close()
-              controller.byobRequest?.respond(0)
-            })
-          } else {
-            const buf = Buffer.isBuffer(value) ? value : Buffer.from(value)
-            if (buf.byteLength) {
-              return controller.enqueue(new Uint8Array(buf))
-            } else {
-              return this.pull(controller)
-            }
-          }
-        })
-      },
-      cancel () {
-        return iterator.return()
-      },
-      type: 'bytes'
-    }
-  )
-}
-
-/**
  * The object should be a FormData instance and contains all the required
  * methods.
  * @param {*} object
@@ -12862,7 +12844,6 @@ module.exports = {
   destroy,
   bodyLength,
   deepClone,
-  ReadableStreamFrom,
   isBuffer,
   assertRequestHandler,
   getSocketInfo,
@@ -13373,8 +13354,14 @@ function lazyllhttp () {
 
   let mod
 
-  // We disable wasm SIMD on ppc64 as it seems to be broken on Power 9 architectures.
-  let useWasmSIMD = process.arch !== 'ppc64'
+  // We disable wasm SIMD on older versions of Node.js on ppc64 that are broken on Power >=9 architectures.
+  let useWasmSIMD = true
+  if (process.arch === 'ppc64') {
+    const [major, minor] = process.versions.node.split('.').map(n => parseInt(n, 10))
+    if (major < 24 || (major === 24 && minor < 12)) {
+      useWasmSIMD = false
+    }
+  }
   // The Env Variable UNDICI_NO_WASM_SIMD allows explicitly overriding the default behavior
   if (process.env.UNDICI_NO_WASM_SIMD === '1') {
     useWasmSIMD = false
@@ -13864,7 +13851,7 @@ class Parser {
    * @param {Buffer} head
    */
   onUpgrade (head) {
-    const { upgrade, client, socket, headers, statusCode } = this
+    const { upgrade, client, socket, headers, statusCode, statusText } = this
 
     assert(upgrade)
     assert(client[kSocket] === socket)
@@ -13899,8 +13886,9 @@ class Parser {
     client.emit('disconnect', client[kUrl], [client], new InformationalError('upgrade'))
 
     try {
-      request.onRequestUpgrade(statusCode, headers, socket)
+      request.onRequestUpgrade(statusCode, headers, socket, statusText)
     } catch (err) {
+      util.errorRequest(client, request, err)
       util.destroy(socket, err)
     }
 
@@ -15117,6 +15105,7 @@ const { pipeline } = __nccwpck_require__(7075)
 const util = __nccwpck_require__(3440)
 const {
   RequestContentLengthMismatchError,
+  ResponseContentLengthMismatchError,
   RequestAbortedError,
   SocketError,
   InformationalError,
@@ -15303,6 +15292,11 @@ function canReplayRequest (request) {
   const { body } = request
 
   return body == null || util.isBuffer(body) || util.isBlobLike(body)
+}
+
+function hasResponseStarted (request) {
+  const state = request[kRequestStream]?.[kRequestStreamState]
+  return state?.responseReceived === true
 }
 
 // Count a GOAWAY refusal against the request's replay budget. A peer that
@@ -15518,7 +15512,8 @@ function resumeH2 (client) {
   const session = client[kHTTP2Session]
 
   if (socket?.destroyed === false) {
-    if (client[kSize] === 0 || client[kMaxConcurrentStreams] === 0) {
+    // After an upgrade the queue is empty but its stream is still in use, so never unref while a stream is open.
+    if (session[kOpenStreams] === 0 && client[kSize] === 0) {
       unrefH2Session(session)
     } else {
       refH2Session(session)
@@ -15752,9 +15747,12 @@ function onHttp2SessionGoAway (errorCode, lastStreamID) {
     const request = client[kQueue][i]
 
     if (request != null) {
+      // Read before detaching, which drops the stream state.
+      const responseStarted = hasResponseStarted(request)
+
       streamsToClose.push(detachRequestStreamForClose(request))
 
-      if (canReplayRequest(request) && registerGoAwayRefusal(request)) {
+      if (!responseStarted && canReplayRequest(request) && registerGoAwayRefusal(request)) {
         retriableRequests.push(request)
       } else {
         util.errorRequest(client, request, err)
@@ -15882,10 +15880,12 @@ function noop () {}
 
 function closeStreamSession (stream) {
   const session = stream[kHTTP2Session]
+  const client = session[kClient]
 
   stream[kHTTP2Session] = null
   session[kOpenStreams] -= 1
-  if (session[kOpenStreams] === 0) {
+  // A session that received GOAWAY does not need to stay ref'd for queued requests.
+  if (session[kOpenStreams] === 0 && (client[kSize] === 0 || session[kReceivedGoAway])) {
     unrefH2Session(session)
     setHttp2IdleTimeout(session)
   }
@@ -16043,9 +16043,14 @@ function onUpgradeResponse (headers, _flags) {
   const statusCode = headers[HTTP2_HEADER_STATUS]
   delete headers[HTTP2_HEADER_STATUS]
 
-  request.onRequestUpgrade(statusCode, headers, stream)
+  try {
+    request.onRequestUpgrade(statusCode, headers, stream)
+  } catch (err) {
+    state.abort(err)
+    return
+  }
 
-  if (request.aborted || request.completed) {
+  if (request.aborted) {
     return
   }
 
@@ -16145,6 +16150,7 @@ function writeH2 (client, request) {
     headersTimeout,
     bodyTimeout,
     requestFinalized: false,
+    responseContentLength: null,
     responseReceived: false,
     bodySent: false,
     pendingEnd: false,
@@ -16440,9 +16446,14 @@ function onData (chunk) {
     return
   }
 
-  const { request, maxResponseSize } = state
+  const { request, maxResponseSize, responseContentLength } = state
 
   if (request.aborted || request.completed) {
+    return
+  }
+
+  if (responseContentLength != null && state.bytesRead + chunk.length > responseContentLength) {
+    state.abort(new ResponseContentLengthMismatchError())
     return
   }
 
@@ -16504,10 +16515,19 @@ function onResponse (headers) {
     stream.end()
   }
 
-  const statusCode = headers[HTTP2_HEADER_STATUS]
+  const statusCode = Number(headers[HTTP2_HEADER_STATUS])
   delete headers[HTTP2_HEADER_STATUS]
   request.onResponseStarted()
   state.responseReceived = true
+
+  // A Content-Length in HEAD and 304 responses describes the selected
+  // representation rather than DATA on this stream. Successful CONNECT uses
+  // the upgrade path above; all other final responses use Content-Length as
+  // their DATA payload length.
+  if (request.method !== 'HEAD' && statusCode !== 304) {
+    const contentLength = headers[HTTP2_HEADER_CONTENT_LENGTH]
+    state.responseContentLength = contentLength == null ? null : Number(contentLength)
+  }
 
   if (state.headersTimeout || state.bodyTimeout) {
     stream.setTimeout(state.bodyTimeout)
@@ -16526,7 +16546,7 @@ function onResponse (headers) {
     return
   }
 
-  if (request.onResponseStart(Number(statusCode), headers, stream.resume.bind(stream), '') === false) {
+  if (request.onResponseStart(statusCode, headers, stream.resume.bind(stream), '') === false) {
     stream.pause()
   }
 
@@ -16549,6 +16569,11 @@ function onEnd () {
   // trailers on the state by now, so completing here still delivers them.
   if (state.responseReceived) {
     if (!request.aborted && !request.completed) {
+      if (state.responseContentLength != null && state.bytesRead !== state.responseContentLength) {
+        state.abort(new ResponseContentLengthMismatchError())
+        return
+      }
+
       state.pendingEnd = true
 
       // Complete on 'end': a blocked event loop can keep the stream's 'close'
@@ -16604,6 +16629,13 @@ function onError (err) {
   }
 
   stream.off('error', onError)
+
+  // Node's HTTP/2 implementation can turn an incomplete Content-Length body
+  // into a protocol stream error instead of emitting 'end'. Prefer the
+  // content-length mismatch error when the received byte count proves it.
+  if (state.responseContentLength != null && state.bytesRead !== state.responseContentLength) {
+    err = new ResponseContentLengthMismatchError()
+  }
 
   if (typeof stream.rstCode === 'number' && stream.rstCode !== NGHTTP2_NO_ERROR) {
     err.http2ErrorCode = stream.rstCode
@@ -17139,7 +17171,7 @@ class Client extends DispatcherBase {
           throw new InvalidArgumentError('h2Options.settings.initialWindowSize must be a positive integer, greater than 0')
         }
 
-        if (h2Options.maxConcurrentStreams != null && (!Number.isInteger(h2Options.connectionWindowSize) || h2Options.maxConcurrentStreams < 1)) {
+        if (h2Options.maxConcurrentStreams != null && (!Number.isInteger(h2Options.maxConcurrentStreams) || h2Options.maxConcurrentStreams < 1)) {
           throw new InvalidArgumentError('h2Options.maxConcurrentStreams must be a positive integer, greater than 0')
         }
 
@@ -18010,9 +18042,10 @@ class Dispatcher1Wrapper extends Dispatcher {
   }
 
   dispatch (opts, handler) {
-    // Legacy (v1) consumers do not support HTTP/2, so force HTTP/1.1.
+    // Legacy (v1) WebSocket consumers do not support falling back to HTTP/1.1
+    // when HTTP/2 Extended CONNECT is unavailable.
     // See https://github.com/nodejs/undici/issues/4989
-    if (opts.allowH2 !== false) {
+    if (opts.upgrade && opts.allowH2 !== false) {
       opts = { ...opts, allowH2: false }
     }
 
@@ -18133,17 +18166,25 @@ class EnvHttpProxyAgent extends DispatcherBase {
     if (this.#noProxyEntries.length === 0) {
       return true // Always proxy if NO_PROXY is not set or empty.
     }
-    if (this.#noProxyValue === '*') {
-      return false // Never proxy if wildcard is set.
-    }
 
     for (let i = 0; i < this.#noProxyEntries.length; i++) {
       const entry = this.#noProxyEntries[i]
+      // A bare `*` entry matches all hosts regardless of its position or the
+      // surrounding whitespace (e.g. ` * ` or `none.invalid,*`). If a port is
+      // attached (`*:80`) it only bypasses that port.
+      if (entry.hostname === '*') {
+        if (entry.port && entry.port !== port) {
+          continue
+        }
+        return false // Never proxy if a wildcard entry is present.
+      }
       if (entry.port && entry.port !== port) {
         continue // Skip if ports don't match.
       }
-      // Don't proxy if the hostname is equal with the no_proxy host.
-      if (hostname === entry.hostname) {
+      // Don't proxy if the hostname is equal with the no_proxy host. A
+      // `*.example.com` wildcard matches subdomains only, not the apex
+      // `example.com`, so exact matches are skipped for wildcard entries.
+      if (!entry.wildcard && hostname === entry.hostname) {
         return false
       }
       // Don't proxy if the hostname is the subdomain of the no_proxy host.
@@ -18188,10 +18229,17 @@ class EnvHttpProxyAgent extends DispatcherBase {
         port = parsed ? Number.parseInt(parsed[2], 10) : 0
       }
 
+      // A leading `*` marks a subdomain wildcard (`*.example.com`), distinct
+      // from a plain or leading-dot suffix (`example.com` / `.example.com`)
+      // which also matches the apex. `*.example.com` must only match
+      // subdomains, never the apex `example.com` itself.
+      const wildcard = entry.charCodeAt(0) === 42 /* '*' */
+
       noProxyEntries.push({
         // strip leading dot or asterisk with dot, and any trailing dot
         hostname: hostname.replace(/^\*?\./, '').replace(/^(.+)\.$/, '$1').toLowerCase(),
-        port
+        port,
+        wildcard
       })
     }
 
@@ -18437,6 +18485,9 @@ const kOnDrain = Symbol('onDrain')
 const kOnConnect = Symbol('onConnect')
 const kOnDisconnect = Symbol('onDisconnect')
 const kOnConnectionError = Symbol('onConnectionError')
+const kOnClientBusy = Symbol('on client busy')
+const kOnClientDrain = Symbol('on client drain')
+const kDrainQueue = Symbol('drain queue')
 const kGetDispatcher = Symbol('get dispatcher')
 const kHasDispatcher = Symbol('has dispatcher')
 const kAddClient = Symbol('add client')
@@ -18452,9 +18503,14 @@ class PoolBase extends DispatcherBase {
   [kNeedDrain] = false;
 
   [kOnDrain] (client, origin, targets) {
-    const queue = this[kQueue]
+    if (client.closed || client.destroyed) {
+      return
+    }
 
+    const queue = this[kQueue]
     let needDrain = false
+
+    this[kOnClientDrain](client)
 
     while (!needDrain) {
       const item = queue.shift()
@@ -18466,8 +18522,57 @@ class PoolBase extends DispatcherBase {
     }
 
     client[kNeedDrain] = needDrain
+    if (needDrain) {
+      this[kOnClientBusy](client)
+    }
 
     if (!needDrain && this[kNeedDrain]) {
+      this[kNeedDrain] = false
+      this.emit('drain', origin, [this, ...targets])
+    }
+
+    if (this[kClosedResolve] && queue.isEmpty()) {
+      const closeAll = []
+      for (let i = 0; i < this[kClients].length; i++) {
+        const client = this[kClients][i]
+        if (!client.destroyed) {
+          closeAll.push(client.close())
+        }
+      }
+      return Promise.all(closeAll)
+        .then(this[kClosedResolve])
+    }
+  }
+
+  [kOnClientBusy] () {}
+
+  [kOnClientDrain] () {}
+
+  [kDrainQueue] (origin, targets) {
+    const queue = this[kQueue]
+    let hasDispatcher = true
+
+    while (!queue.isEmpty()) {
+      const dispatcher = this[kGetDispatcher]()
+      if (!dispatcher) {
+        hasDispatcher = false
+        break
+      }
+
+      const item = queue.shift()
+      this[kQueued]--
+
+      if (!dispatcher.dispatch(item.opts, item.handler)) {
+        dispatcher[kNeedDrain] = true
+        this[kOnClientBusy](dispatcher)
+        hasDispatcher = this[kHasDispatcher]()
+        if (!hasDispatcher) {
+          break
+        }
+      }
+    }
+
+    if (hasDispatcher && this[kNeedDrain]) {
       this[kNeedDrain] = false
       this.emit('drain', origin, [this, ...targets])
     }
@@ -18587,6 +18692,7 @@ class PoolBase extends DispatcherBase {
       this[kQueued]++
     } else if (!dispatcher.dispatch(opts, handler)) {
       dispatcher[kNeedDrain] = true
+      this[kOnClientBusy](dispatcher)
       this[kNeedDrain] = !this[kHasDispatcher]()
     }
 
@@ -18620,7 +18726,7 @@ class PoolBase extends DispatcherBase {
 
     if (this[kNeedDrain]) {
       queueMicrotask(() => {
-        if (this[kNeedDrain]) {
+        if (this[kNeedDrain] && !client[kNeedDrain]) {
           this[kOnDrain](client, client[kUrl], [client, this])
         }
       })
@@ -18651,6 +18757,9 @@ module.exports = {
   kNeedDrain,
   kAddClient,
   kRemoveClient,
+  kDrainQueue,
+  kOnClientBusy,
+  kOnClientDrain,
   kGetDispatcher,
   kHasDispatcher
 }
@@ -18669,6 +18778,9 @@ const {
   kClients,
   kNeedDrain,
   kAddClient,
+  kDrainQueue,
+  kOnClientBusy,
+  kOnClientDrain,
   kGetDispatcher,
   kHasDispatcher,
   kRemoveClient
@@ -18678,15 +18790,39 @@ const {
   InvalidArgumentError
 } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
-const { kUrl } = __nccwpck_require__(6443)
+const { kConnecting, kHTTPContext, kUrl } = __nccwpck_require__(6443)
 const buildConnector = __nccwpck_require__(9136)
 
 const kOptions = Symbol('options')
 const kConnections = Symbol('connections')
 const kFactory = Symbol('factory')
+const kProtocol = Symbol('protocol')
+const kProtocolProbe = Symbol('protocol probe')
 
 function defaultFactory (origin, opts) {
   return new Client(origin, opts)
+}
+
+function shouldCreateProtocolProbe (pool, dispatcher) {
+  return dispatcher instanceof Client &&
+    pool[kProtocol] !== 'h1' &&
+    (pool[kOptions].useH2c === true || (pool[kUrl].protocol === 'https:' && pool[kOptions].allowH2 !== false))
+}
+
+function createClient (pool) {
+  const dispatcher = pool[kFactory](pool[kUrl], pool[kOptions])
+
+  // HTTPS does not reveal whether the peer selected h1 or h2 until ALPN
+  // completes. While h2 is still possible, let one Client probe the protocol
+  // and keep later requests in the Pool queue instead of opening one TLS
+  // connection per request. A confirmed h1 connection disables this gate and
+  // restores the usual Pool fan-out.
+  if (shouldCreateProtocolProbe(pool, dispatcher)) {
+    pool[kProtocolProbe] = dispatcher
+  }
+
+  pool[kAddClient](dispatcher)
+  return dispatcher
 }
 
 class Pool extends PoolBase {
@@ -18736,6 +18872,8 @@ class Pool extends PoolBase {
     this[kUrl] = util.parseOrigin(origin)
     this[kOptions] = { ...util.deepClone(options), connect, allowH2, useH2c, clientTtl, socketPath }
     this[kFactory] = factory
+    this[kProtocol] = null
+    this[kProtocolProbe] = null
 
     this.on('connect', (origin, targets) => {
       if (clientTtl != null && clientTtl > 0) {
@@ -18743,13 +18881,42 @@ class Pool extends PoolBase {
           Object.assign(target, { ttl: Date.now() })
         }
       }
+
+      const client = targets[targets.length - 1]
+      if (client instanceof Client) {
+        this[kProtocol] = client[kHTTPContext]?.version
+      }
+
+      if (client === this[kProtocolProbe]) {
+        // An h2 Client's drain event releases the requests accumulated during
+        // negotiation onto that Client. If ALPN selected h1, release the probe
+        // immediately and restore normal Pool fan-out instead.
+        if (this[kProtocol] !== 'h2') {
+          this[kProtocolProbe] = null
+          this[kDrainQueue](origin, targets.slice(1))
+        }
+      }
     })
 
-    this.on('connectionError', (origin, targets, error) => {
+    this.on('disconnect', (origin, targets) => {
+      if (targets.includes(this[kProtocolProbe])) {
+        this[kProtocolProbe] = null
+        this[kDrainQueue](origin, targets.slice(1))
+      }
+    })
+
+    this.on('connectionError', (origin, targets) => {
+      let resumeQueued = false
+
       // If a connection error occurs, we remove the client from the pool,
       // and emit a connectionError event. They will not be re-used.
       // Fixes https://github.com/nodejs/undici/issues/3895
       for (const target of targets) {
+        if (target === this[kProtocolProbe]) {
+          this[kProtocolProbe] = null
+          resumeQueued = true
+        }
+
         // Do not use kRemoveClient here, as it will close the client,
         // but the client cannot be closed in this state.
         const idx = this[kClients].indexOf(target)
@@ -18757,7 +18924,27 @@ class Pool extends PoolBase {
           this[kClients].splice(idx, 1)
         }
       }
+
+      if (resumeQueued) {
+        this[kDrainQueue](origin, targets.slice(1))
+      }
     })
+  }
+
+  [kOnClientBusy] (client) {
+    if (
+      this[kProtocolProbe] === null &&
+      client[kConnecting] &&
+      shouldCreateProtocolProbe(this, client)
+    ) {
+      this[kProtocolProbe] = client
+    }
+  }
+
+  [kOnClientDrain] (client) {
+    if (client === this[kProtocolProbe]) {
+      this[kProtocolProbe] = null
+    }
   }
 
   [kGetDispatcher] () {
@@ -18774,10 +18961,12 @@ class Pool extends PoolBase {
       }
     }
 
+    if (this[kProtocolProbe] !== null) {
+      return
+    }
+
     if (!this[kConnections] || this[kClients].length < this[kConnections]) {
-      const dispatcher = this[kFactory](this[kUrl], this[kOptions])
-      this[kAddClient](dispatcher)
-      return dispatcher
+      return createClient(this)
     }
   }
 
@@ -18794,9 +18983,12 @@ class Pool extends PoolBase {
       }
     }
 
+    if (this[kProtocolProbe] !== null) {
+      return false
+    }
+
     if (!this[kConnections] || this[kClients].length < this[kConnections]) {
-      const dispatcher = this[kFactory](this[kUrl], this[kOptions])
-      this[kAddClient](dispatcher)
+      createClient(this)
       return true
     }
 
@@ -19140,8 +19332,8 @@ class ProxyAgent extends DispatcherBase {
 }
 
 /**
- * @param {string[] | Record<string, string>} headers
- * @returns {Record<string, string>}
+ * @param {string[] | Record<string, string> | Iterable<[string, string | string[] | undefined]>} headers
+ * @returns {Record<string, string | string[] | undefined>}
  */
 function buildHeaders (headers) {
   // When using undici.fetch, the headers list is stored
@@ -19170,7 +19362,20 @@ function buildHeaders (headers) {
     const headersPair = {}
 
     for (const [key, value] of headers) {
-      headersPair[key] = value
+      if (!Object.hasOwn(headersPair, key)) {
+        headersPair[key] = value
+        continue
+      }
+
+      const previous = headersPair[key]
+      const values = []
+      if (previous !== undefined) {
+        values.push(...(Array.isArray(previous) ? previous : [previous]))
+      }
+      if (value !== undefined) {
+        values.push(...(Array.isArray(value) ? value : [value]))
+      }
+      headersPair[key] = values.length > 1 ? values : values[0]
     }
 
     return headersPair
@@ -21219,8 +21424,11 @@ class DeduplicationHandler {
       return
     }
 
-    this.#completed = true
+    // Remove the entry before callbacks can synchronously dispatch a retry.
+    this.#cleanup()
     this.#primaryHandler.onResponseEnd?.(controller, trailers)
+    // A throwing end callback must still be handled by onResponseError.
+    this.#completed = true
 
     for (const waitingHandler of this.#waitingHandlers) {
       if (waitingHandler.done || waitingHandler.controller.aborted) {
@@ -21235,22 +21443,21 @@ class DeduplicationHandler {
         continue
       }
 
-      if (waitingHandler.controller.paused && waitingHandler.bufferedChunks.length > 0) {
+      if (waitingHandler.controller.paused) {
         waitingHandler.pendingTrailers = trailers
         continue
       }
 
       try {
         waitingHandler.handler.onResponseEnd?.(waitingHandler.controller, trailers)
-      } catch {
-        // Ignore errors from waiting handlers
+      } catch (err) {
+        this.#errorWaitingHandler(waitingHandler, err)
       }
 
       waitingHandler.done = true
     }
 
     this.#pruneDoneWaitingHandlers()
-    this.#onComplete?.()
   }
 
   /**
@@ -21264,6 +21471,7 @@ class DeduplicationHandler {
 
     this.#aborted = true
     this.#completed = true
+    this.#cleanup()
 
     this.#primaryHandler.onResponseError?.(controller, err)
 
@@ -21272,7 +21480,12 @@ class DeduplicationHandler {
     }
 
     this.#waitingHandlers = []
-    this.#onComplete?.()
+  }
+
+  #cleanup () {
+    const onComplete = this.#onComplete
+    this.#onComplete = null
+    onComplete?.()
   }
 
   /**
@@ -21314,8 +21527,8 @@ class DeduplicationHandler {
         ) {
           try {
             waitingHandler.handler.onResponseEnd?.(waitingHandler.controller, waitingHandler.pendingTrailers)
-          } catch {
-            // Ignore errors from waiting handlers
+          } catch (err) {
+            this.#errorWaitingHandler(waitingHandler, err)
           }
 
           waitingHandler.pendingTrailers = null
@@ -21373,7 +21586,7 @@ class DeduplicationHandler {
 
     if (waitingHandler.bufferedBytes > this.#maxBufferSize) {
       const err = new RequestAbortedError(`Deduplicated waiting handler exceeded maxBufferSize (${this.#maxBufferSize} bytes) while paused`)
-      this.#errorWaitingHandler(waitingHandler, err)
+      waitingHandler.controller.abort(err)
     }
   }
 
@@ -21422,8 +21635,13 @@ class DeduplicationHandler {
     waitingHandler.bufferedChunks = []
     waitingHandler.bufferedBytes = 0
 
-    // controller.abort(err) notifies the handler via onResponseError
-    waitingHandler.controller.abort(err)
+    // A response failure is not a consumer abort: retry handlers must be able
+    // to retry it just as they would a failure of the primary request.
+    try {
+      waitingHandler.handler.onResponseError?.(waitingHandler.controller, err)
+    } catch {
+      // Ignore errors from waiting handlers
+    }
   }
 
   #pruneDoneWaitingHandlers () {
@@ -21499,6 +21717,11 @@ class RedirectHandler {
   }
 
   onResponseStart (controller, statusCode, headers, statusMessage) {
+    if (statusCode < 200) {
+      this.handler.onResponseStart?.(controller, statusCode, headers, statusMessage)
+      return
+    }
+
     if (this.opts.throwOnMaxRedirect && this.history.length >= this.maxRedirections) {
       throw new Error('max redirects')
     }
@@ -21735,34 +21958,51 @@ function validatePartialResponseContentLength (headers, range, statusCode, retry
 // so nothing outside the handler can trigger it.
 class RetryController {
   #onAbort
+  #paused = false
+  #target = null
 
   constructor (onAbort) {
     this.#onAbort = onAbort
-    this.target = null
   }
 
-  pause () { this.target?.pause() }
-  resume () { this.target?.resume() }
-
-  abort (reason) {
-    this.target?.abort(reason)
-    this.#onAbort(reason)
-  }
-
-  get paused () { return this.target?.paused ?? false }
-  get aborted () { return this.target?.aborted ?? false }
-  get reason () { return this.target?.reason ?? null }
-  get rawHeaders () { return this.target?.rawHeaders ?? null }
-  set rawHeaders (value) {
-    if (this.target) {
-      this.target.rawHeaders = value
+  set target (target) {
+    this.#target = target
+    if (this.#paused) {
+      target?.pause()
     }
   }
 
-  get rawTrailers () { return this.target?.rawTrailers ?? null }
+  get target () { return this.#target }
+
+  pause () {
+    this.#paused = true
+    this.#target?.pause()
+  }
+
+  resume () {
+    this.#paused = false
+    this.#target?.resume()
+  }
+
+  abort (reason) {
+    this.#target?.abort(reason)
+    this.#onAbort(reason)
+  }
+
+  get paused () { return this.#paused || (this.#target?.paused ?? false) }
+  get aborted () { return this.#target?.aborted ?? false }
+  get reason () { return this.#target?.reason ?? null }
+  get rawHeaders () { return this.#target?.rawHeaders ?? null }
+  set rawHeaders (value) {
+    if (this.#target) {
+      this.#target.rawHeaders = value
+    }
+  }
+
+  get rawTrailers () { return this.#target?.rawTrailers ?? null }
   set rawTrailers (value) {
-    if (this.target) {
-      this.target.rawTrailers = value
+    if (this.#target) {
+      this.#target.rawTrailers = value
     }
   }
 }
@@ -21830,6 +22070,12 @@ class RetryHandler {
     // Backoff timer returned by the retry policy, so #onAbort can cancel it.
     // Null for custom policies that do not return their timer.
     this.retryTimer = null
+    // A response can complete while its controller is paused if the peer closes
+    // the connection. Hold its body until the retry policy decides whether to
+    // discard it for a retry or forward it as the final response.
+    this.pendingResponseData = null
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     // Set once an abort during the backoff delivered the terminal error
     // downstream; late policy callbacks and connection errors are then moot.
     this.aborted = false
@@ -21871,6 +22117,13 @@ class RetryHandler {
       this.retryPending = false
       this.retryTimer = null
 
+      const pendingData = this.pendingResponseData
+      const pendingTrailers = this.pendingResponseTrailers
+      const pendingEnd = this.pendingResponseEnded
+      this.pendingResponseData = null
+      this.pendingResponseTrailers = null
+      this.pendingResponseEnded = false
+
       if (passedErr) {
         if (this.headersSent) {
           // The downstream handler already received the response from an
@@ -21881,6 +22134,15 @@ class RetryHandler {
           this.headersSent = true
           this.checkpointResponseEnd(headers)
           this.handler.onResponseStart?.(this.controllerProxy, statusCode, headers, statusMessage)
+          controller.resume()
+
+          if (pendingEnd) {
+            for (const chunk of pendingData) {
+              this.onResponseData(controller, chunk)
+            }
+            this.onResponseEnd(controller, pendingTrailers)
+          }
+          return
         }
         controller.resume()
         return
@@ -21888,6 +22150,9 @@ class RetryHandler {
 
       this.error = err
       controller.resume()
+      if (pendingEnd) {
+        this.onResponseEnd(controller, pendingTrailers)
+      }
     }
 
     // The pause()/resume() pair (here and in shouldRetry) acts on THIS
@@ -21901,6 +22166,9 @@ class RetryHandler {
     // The default policy returns its backoff timer so an abort can cancel it;
     // a custom policy may return anything (or nothing), which is ignored.
     this.retryPending = true
+    this.pendingResponseData = []
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     this.retryTimer = this.retryOpts.retry(
       err,
       {
@@ -22152,6 +22420,11 @@ class RetryHandler {
   }
 
   onResponseData (_controller, chunk) {
+    if (this.pendingResponseData !== null) {
+      this.pendingResponseData.push(chunk)
+      return
+    }
+
     if (this.error) {
       return
     }
@@ -22162,6 +22435,12 @@ class RetryHandler {
   }
 
   onResponseEnd (_controller, trailers) {
+    if (this.pendingResponseData !== null) {
+      this.pendingResponseTrailers = trailers
+      this.pendingResponseEnded = true
+      return
+    }
+
     if (this.error && this.retryOpts.throwOnError) {
       throw this.error
     }
@@ -22275,6 +22554,9 @@ class RetryHandler {
     this.retryPending = false
     clearTimeout(this.retryTimer)
     this.retryTimer = null
+    this.pendingResponseData = null
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     this.handler.onResponseError?.(this.controllerProxy, reason ?? new RequestAbortedError())
   }
 }
@@ -22620,6 +22902,8 @@ function sendCachedValue (handler, opts, result, age, context, isStale) {
   assert(!stream.destroyed, 'stream should not be destroyed')
   assert(!stream.readableDidRead, 'stream should not be readableDidRead')
 
+  let aborted = false
+
   const controller = {
     rawHeaders: [],
     rawTrailers: [],
@@ -22633,12 +22917,13 @@ function sendCachedValue (handler, opts, result, age, context, isStale) {
       return stream.isPaused()
     },
     get aborted () {
-      return stream.destroyed
+      return aborted
     },
     get reason () {
       return stream.errored
     },
     abort (reason) {
+      aborted = true
       stream.destroy(reason ?? new AbortError())
     }
   }
@@ -22978,8 +23263,63 @@ const DecoratorHandler = __nccwpck_require__(8155)
 /** @typedef {import('node:stream').Transform} Controller */
 /** @typedef {Transform&import('node:zlib').Zlib} DecompressorStream */
 
+class DecompressController {
+  #onPause
+  #onResume
+  #onAbort
+  #paused = false
+
+  constructor (onPause, onResume, onAbort) {
+    this.#onPause = onPause
+    this.#onResume = onResume
+    this.#onAbort = onAbort
+    this.target = null
+  }
+
+  pause () {
+    if (this.#paused) {
+      return
+    }
+
+    this.#paused = true
+    this.#onPause()
+  }
+
+  resume () {
+    if (!this.#paused) {
+      return
+    }
+
+    this.#paused = false
+    this.#onResume()
+  }
+
+  abort (reason) {
+    this.target?.abort(reason)
+    this.#onAbort(reason)
+  }
+
+  get paused () { return this.#paused }
+  get aborted () { return this.target?.aborted ?? false }
+  get reason () { return this.target?.reason ?? null }
+  get rawHeaders () { return this.target?.rawHeaders ?? null }
+  set rawHeaders (value) {
+    if (this.target) {
+      this.target.rawHeaders = value
+    }
+  }
+
+  get rawTrailers () { return this.target?.rawTrailers ?? null }
+  set rawTrailers (value) {
+    if (this.target) {
+      this.target.rawTrailers = value
+    }
+  }
+}
+
 /** @type {Record<string, () => DecompressorStream>} */
 const supportedEncodings = {
+  __proto__: null,
   gzip: createGunzip,
   'x-gzip': createGunzip,
   br: createBrotliDecompress,
@@ -22990,7 +23330,7 @@ const supportedEncodings = {
 }
 
 const defaultSkipStatusCodes = /** @type {const} */ ([204, 304])
-const defaultMaxSize = 64 * 1024 * 1024
+const defaultMaxSize = 0
 
 /**
  * Limits the output of one stage in a decompression chain.
@@ -23022,7 +23362,7 @@ let warningEmitted = /** @type {boolean} */ (false)
  * @typedef {Object} DecompressHandlerOptions
  * @property {number[]|Readonly<number[]>} [skipStatusCodes=[204, 304]] - List of status codes to skip decompression for
  * @property {boolean} [skipErrorResponses] - Whether to skip decompression for error responses (status codes >= 400)
- * @property {number} [maxSize=67108864] - Maximum decompressed response size in bytes
+ * @property {number} [maxSize=0] - Maximum decompressed response size in bytes. 0 disables the limit
  */
 
 class DecompressHandler extends DecoratorHandler {
@@ -23042,16 +23382,130 @@ class DecompressHandler extends DecoratorHandler {
   #terminated = false
   /** @type {boolean} */
   #inputEnded = false
+  /** @type {boolean} */
+  #inputBackpressured = false
+  /** @type {boolean} */
+  #upstreamPaused = false
+  /** @type {boolean} */
+  #draining = false
+  /** @type {boolean} */
+  #drainRequested = false
+  /** @type {boolean} */
+  #completionPending = false
+  /** @type {DecompressorStream | undefined} */
+  #finalDecompressor
+  /** @type {DecompressController} */
+  #controller
 
   constructor (handler, { skipStatusCodes = defaultSkipStatusCodes, skipErrorResponses = true, maxSize = defaultMaxSize } = {}) {
-    if (!Number.isSafeInteger(maxSize) || maxSize < 1) {
-      throw new InvalidArgumentError('maxSize must be a positive integer')
+    if (!Number.isSafeInteger(maxSize) || maxSize < 0) {
+      throw new InvalidArgumentError('maxSize must be a non-negative integer')
     }
 
     super(handler)
     this.#skipStatusCodes = skipStatusCodes
     this.#skipErrorResponses = skipErrorResponses
     this.#maxSize = maxSize
+    this.#controller = new DecompressController(
+      () => this.#onDownstreamPause(),
+      () => this.#onDownstreamResume(),
+      reason => {
+        if (this.#inputEnded && !this.#terminated) {
+          this.onResponseError(this.#controller, reason)
+        }
+      }
+    )
+  }
+
+  #onDownstreamPause () {
+    this.#pauseUpstream()
+  }
+
+  #onDownstreamResume () {
+    const drainWasDeferred = this.#draining
+    this.#drainOutput()
+    if (!drainWasDeferred) {
+      this.#resumeUpstreamIfNeeded()
+      this.#finishIfReady()
+    }
+  }
+
+  #pauseUpstream () {
+    if (!this.#upstreamPaused && !this.#terminated) {
+      this.#upstreamPaused = true
+      this.#controller.target?.pause()
+    }
+  }
+
+  #resumeUpstreamIfNeeded () {
+    if (this.#upstreamPaused && !this.#controller.paused && !this.#inputBackpressured) {
+      this.#upstreamPaused = false
+      if (!this.#inputEnded) {
+        this.#controller.target?.resume()
+      }
+    }
+  }
+
+  #drainOutput () {
+    if (this.#terminated || this.#controller.paused || !this.#finalDecompressor) {
+      return
+    }
+
+    if (this.#draining) {
+      this.#drainRequested = true
+      return
+    }
+
+    this.#draining = true
+    try {
+      do {
+        this.#drainRequested = false
+        let chunk
+        while (!this.#terminated && !this.#controller.paused && (chunk = this.#finalDecompressor.read()) !== null) {
+          if (this.#maxSize > 0) {
+            const decompressedSize = this.#decompressedSize + chunk.length
+            if (decompressedSize > this.#maxSize) {
+              this.#fail(new ResponseExceededMaxSizeError(
+                `Decompressed response size (${decompressedSize}) exceeded maxSize (${this.#maxSize})`
+              ))
+              return
+            }
+
+            this.#decompressedSize = decompressedSize
+          }
+
+          const result = super.onResponseData(this.#controller, chunk)
+          if (result === false && !this.#controller.paused) {
+            this.#controller.pause()
+          }
+        }
+      } while (this.#drainRequested && !this.#terminated && !this.#controller.paused)
+    } finally {
+      this.#draining = false
+    }
+
+    this.#resumeUpstreamIfNeeded()
+    this.#finishIfReady()
+  }
+
+  #finishIfReady () {
+    if (this.#terminated || !this.#completionPending || this.#controller.paused || this.#draining) {
+      return
+    }
+
+    this.#terminated = true
+    this.#cleanupDecompressors()
+    super.onResponseEnd(this.#controller, this.#trailers)
+  }
+
+  #onDecompressionEnd () {
+    if (this.#terminated) {
+      return
+    }
+
+    this.#completionPending = true
+    this.#drainOutput()
+    this.#finishIfReady()
   }
 
   /**
@@ -23107,7 +23561,7 @@ class DecompressHandler extends DecoratorHandler {
     const streams = []
     for (let i = 0; i < decompressors.length; i++) {
       streams.push(decompressors[i])
-      if (i < decompressors.length - 1) {
+      if (i < decompressors.length - 1 && this.#maxSize > 0) {
         streams.push(createMaxSizeLimiter(this.#maxSize))
       }
     }
@@ -23117,11 +23571,10 @@ class DecompressHandler extends DecoratorHandler {
 
   /**
    * Stops decompression and reports an error.
-   * @param {Controller} controller - The controller to coordinate with
    * @param {Error} error - The decompression error
    * @returns {void}
    */
-  #fail (controller, error) {
+  #fail (error) {
     if (this.#terminated) {
       return
     }
@@ -23129,75 +23582,41 @@ class DecompressHandler extends DecoratorHandler {
     if (this.#inputEnded) {
       // The request is already marked complete once the compressed input ends,
       // so controller.abort() can no longer propagate decoder flush errors.
-      this.onResponseError(controller, error)
+      this.onResponseError(this.#controller, error)
     } else {
-      controller.abort(error)
+      this.#controller.abort(error)
     }
   }
 
   /**
-   * Sets up event handlers for a decompressor stream using readable events
+   * Sets up event handlers for the final decompressor stream.
    * @param {DecompressorStream} decompressor - The decompressor stream
-   * @param {Controller} controller - The controller to coordinate with
    * @returns {void}
    */
-  #setupDecompressorEvents (decompressor, controller) {
-    decompressor.on('readable', () => {
-      if (this.#terminated) {
-        return
-      }
-
-      let chunk
-      while ((chunk = decompressor.read()) !== null) {
-        const decompressedSize = this.#decompressedSize + chunk.length
-        if (decompressedSize > this.#maxSize) {
-          this.#fail(controller, new ResponseExceededMaxSizeError(
-            `Decompressed response size (${decompressedSize}) exceeded maxSize (${this.#maxSize})`
-          ))
-          return
-        }
-
-        this.#decompressedSize = decompressedSize
-        const result = super.onResponseData(controller, chunk)
-        if (result === false) {
-          break
-        }
-      }
-    })
-
-    decompressor.on('error', (error) => {
-      this.#fail(controller, error)
-    })
+  #setupDecompressorEvents (decompressor) {
+    this.#finalDecompressor = decompressor
+    decompressor.on('readable', () => this.#drainOutput())
+    decompressor.on('error', (error) => this.#fail(error))
   }
 
   /**
    * Sets up event handling for a single decompressor
-   * @param {Controller} controller - The controller to handle events
    * @returns {void}
    */
-  #setupSingleDecompressor (controller) {
+  #setupSingleDecompressor () {
     const decompressor = this.#decompressors[0]
-    this.#setupDecompressorEvents(decompressor, controller)
+    this.#setupDecompressorEvents(decompressor)
 
-    decompressor.on('end', () => {
-      if (this.#terminated) {
-        return
-      }
-
-      this.#terminated = true
-      this.#cleanupDecompressors()
-      super.onResponseEnd(controller, this.#trailers)
-    })
+    decompressor.on('end', () => this.#onDecompressionEnd())
   }
 
   /**
    * Sets up event handling for multiple chained decompressors using pipeline
-   * @param {Controller} controller - The controller to handle events
    * @returns {void}
    */
-  #setupMultipleDecompressors (controller) {
+  #setupMultipleDecompressors () {
     const lastDecompressor = this.#decompressors[this.#decompressors.length - 1]
-    this.#setupDecompressorEvents(lastDecompressor, controller)
+    this.#setupDecompressorEvents(lastDecompressor)
 
     pipeline(this.#decompressors, (err) => {
       if (this.#terminated) {
@@ -23205,13 +23624,26 @@ class DecompressHandler extends DecoratorHandler {
       }
 
       if (err) {
-        this.#fail(controller, err)
+        this.#fail(err)
         return
       }
 
-      this.#terminated = true
-      this.#cleanupDecompressors()
-      super.onResponseEnd(controller, this.#trailers)
+      this.#onDecompressionEnd()
+    })
+  }
+
+  #setupInputBackpressure () {
+    const decompressor = this.#decompressors[0]
+    decompressor.on('drain', () => {
+      if (this.#terminated) {
+        return
+      }
+
+      this.#inputBackpressured = false
+      if (!this.#controller.paused) {
+        this.#drainOutput()
+        this.#resumeUpstreamIfNeeded()
+      }
     })
   }
 
@@ -23221,6 +23653,16 @@ class DecompressHandler extends DecoratorHandler {
    */
   #cleanupDecompressors () {
     this.#decompressors.length = 0
+    this.#finalDecompressor = undefined
+  }
+
+  onRequestStart (controller, context) {
+    this.#controller.target = controller
+    return super.onRequestStart(this.#controller, context)
+  }
+
+  onRequestUpgrade (controller, statusCode, headers, socket) {
+    return super.onRequestUpgrade(this.#controller, statusCode, headers, socket)
   }
 
   /**
@@ -23231,18 +23673,24 @@ class DecompressHandler extends DecoratorHandler {
    * @returns {void}
    */
   onResponseStart (controller, statusCode, headers, statusMessage) {
-    const contentEncoding = headers['content-encoding']
+    // Repeated field lines reach us as an array. RFC 9110 section 5.3 lets a
+    // recipient join them with commas, which yields the single-line form the
+    // decompression chain already handles.
+    const rawContentEncoding = headers['content-encoding']
+    const contentEncoding = Array.isArray(rawContentEncoding)
+      ? rawContentEncoding.join(',')
+      : rawContentEncoding
 
     // If content encoding is not supported or status code is in skip list
     if (this.#shouldSkipDecompression(contentEncoding, statusCode)) {
-      return super.onResponseStart(controller, statusCode, headers, statusMessage)
+      return super.onResponseStart(this.#controller, statusCode, headers, statusMessage)
     }
 
     const decompressors = this.#createDecompressionChain(contentEncoding.toLowerCase())
 
     if (decompressors.length === 0) {
       this.#cleanupDecompressors()
-      return super.onResponseStart(controller, statusCode, headers, statusMessage)
+      return super.onResponseStart(this.#controller, statusCode, headers, statusMessage)
     }
 
     this.#decompressors = decompressors
@@ -23250,8 +23698,8 @@ class DecompressHandler extends DecoratorHandler {
     // Remove compression headers since we're decompressing
     const { 'content-encoding': _, 'content-length': __, ...newHeaders } = headers
 
-    if (controller?.rawHeaders) {
-      const rawHeaders = controller.rawHeaders
+    if (this.#controller.rawHeaders) {
+      const rawHeaders = this.#controller.rawHeaders
 
       if (Array.isArray(rawHeaders)) {
         const filteredHeaders = []
@@ -23277,13 +23725,14 @@ class DecompressHandler extends DecoratorHandler {
       }
     }
 
+    this.#setupInputBackpressure()
     if (this.#decompressors.length === 1) {
-      this.#setupSingleDecompressor(controller)
+      this.#setupSingleDecompressor()
     } else {
-      this.#setupMultipleDecompressors(controller)
+      this.#setupMultipleDecompressors()
     }
 
-    return super.onResponseStart(controller, statusCode, newHeaders, statusMessage)
+    return super.onResponseStart(this.#controller, statusCode, newHeaders, statusMessage)
   }
 
   /**
@@ -23293,10 +23742,13 @@ class DecompressHandler extends DecoratorHandler {
    */
   onResponseData (controller, chunk) {
     if (this.#decompressors.length > 0) {
-      this.#decompressors[0].write(chunk)
+      if (!this.#decompressors[0].write(chunk)) {
+        this.#inputBackpressured = true
+        this.#pauseUpstream()
+      }
       return
     }
-    super.onResponseData(controller, chunk)
+    return super.onResponseData(this.#controller, chunk)
   }
 
   /**
@@ -23311,7 +23763,7 @@ class DecompressHandler extends DecoratorHandler {
       this.#decompressors[0].end()
       return
     }
-    super.onResponseEnd(controller, trailers)
+    return super.onResponseEnd(this.#controller, trailers)
   }
 
   /**
@@ -23329,7 +23781,7 @@ class DecompressHandler extends DecoratorHandler {
       decompressor.destroy()
     }
     this.#cleanupDecompressors()
-    super.onResponseError(controller, err)
+    super.onResponseError(this.#controller, err)
   }
 }
 
@@ -29946,7 +30398,7 @@ class Cache {
   }
 
   async match (request, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.match'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -29964,7 +30416,7 @@ class Cache {
   }
 
   async matchAll (request = undefined, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.matchAll'
     if (request !== undefined) request = webidl.converters.RequestInfo(request)
@@ -29974,7 +30426,7 @@ class Cache {
   }
 
   async add (request) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.add'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -29992,7 +30444,7 @@ class Cache {
   }
 
   async addAll (requests) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.addAll'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -30090,7 +30542,10 @@ class Cache {
             }
           }
         },
-        processResponseEndOfBody (response) {
+        // Possible spec bug. If the body is never read, `processResponseEndOfBody` (which is attached to a TransformStream's flush hook)
+        // never runs, so this would hang. This hook, on the other hand, always reads the body.
+        // https://github.com/nodejs/undici/issues/5615
+        processResponseConsumeBody (response) {
           // 1.
           if (response.aborted) {
             responsePromise.reject(new DOMException('aborted', 'AbortError'))
@@ -30162,7 +30617,7 @@ class Cache {
   }
 
   async put (request, response) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.put'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -30293,7 +30748,7 @@ class Cache {
   }
 
   async delete (request, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -30359,7 +30814,7 @@ class Cache {
    * @returns {Promise<readonly Request[]>}
    */
   async keys (request = undefined, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.keys'
 
@@ -30709,6 +31164,12 @@ class Cache {
     // 6.
     return Object.freeze(responseList)
   }
+
+  static {
+    webidl.is.Cache = (arg) => {
+      return arg != null && typeof arg === 'object' && #relevantRequestResponseList in arg
+    }
+  }
 }
 
 Object.defineProperties(Cache.prototype, {
@@ -30796,7 +31257,7 @@ class CacheStorage {
   }
 
   async match (request, options = {}) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
     webidl.argumentLengthCheck(arguments, 1, 'CacheStorage.match')
 
     request = webidl.converters.RequestInfo(request)
@@ -30833,7 +31294,7 @@ class CacheStorage {
    * @returns {Promise<boolean>}
    */
   async has (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.has'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -30851,7 +31312,7 @@ class CacheStorage {
    * @returns {Promise<Cache>}
    */
   async open (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.open'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -30885,7 +31346,7 @@ class CacheStorage {
    * @returns {Promise<boolean>}
    */
   async delete (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -30900,13 +31361,19 @@ class CacheStorage {
    * @returns {Promise<string[]>}
    */
   async keys () {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     // 2.1
     const keys = this.#caches.keys()
 
     // 2.2
     return [...keys]
+  }
+
+  static {
+    webidl.is.CacheStorage = (arg) => {
+      return arg != null && typeof arg === 'object' && #caches in arg
+    }
   }
 }
 
@@ -31011,9 +31478,19 @@ module.exports = {
 const { parseSetCookie } = __nccwpck_require__(1978)
 const { stringify } = __nccwpck_require__(7797)
 const { webidl } = __nccwpck_require__(7879)
-const { Headers } = __nccwpck_require__(660)
 
-const brandChecks = webidl.brandCheckMultiple([Headers, globalThis.Headers].filter(Boolean))
+const globalHeadersBrandCheck = (arg) => webidl.brandCheck(arg, webidl.util.MakeTypeAssertion(globalThis.Headers))
+const undiciHeadersBrandCheck = (arg) => webidl.brandCheck(arg, webidl.is.Headers)
+
+function brandCheckHeaders (arg) {
+  try {
+    undiciHeadersBrandCheck(arg)
+    return
+  } catch {
+  }
+
+  globalHeadersBrandCheck(arg)
+}
 
 /**
  * @typedef {Object} Cookie
@@ -31036,12 +31513,14 @@ const brandChecks = webidl.brandCheckMultiple([Headers, globalThis.Headers].filt
 function getCookies (headers) {
   webidl.argumentLengthCheck(arguments, 1, 'getCookies')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const cookie = headers.get('cookie')
 
+  // A null prototype keeps a cookie named `__proto__` from hitting the
+  // Object.prototype setter, which would silently drop it.
   /** @type {Record<string, string>} */
-  const out = {}
+  const out = { __proto__: null }
 
   if (!cookie) {
     return out
@@ -31063,7 +31542,7 @@ function getCookies (headers) {
  * @returns {void}
  */
 function deleteCookie (headers, name, attributes) {
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const prefix = 'deleteCookie'
   webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -31088,7 +31567,7 @@ function deleteCookie (headers, name, attributes) {
 function getSetCookies (headers) {
   webidl.argumentLengthCheck(arguments, 1, 'getSetCookies')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const cookies = headers.getSetCookie()
 
@@ -31117,7 +31596,7 @@ function parseCookie (cookie) {
 function setCookie (headers, cookie) {
   webidl.argumentLengthCheck(arguments, 2, 'setCookie')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   cookie = webidl.converters.Cookie(cookie)
 
@@ -31856,7 +32335,9 @@ function stringify (cookie) {
     out.push(`Path=${cookie.path}`)
   }
 
-  if (cookie.expires && cookie.expires.toString() !== 'Invalid Date') {
+  // A numeric 0 is the Unix epoch, not an absent value -- the same reason the
+  // Max-Age check above tests the type rather than truthiness.
+  if (cookie.expires != null && cookie.expires.toString() !== 'Invalid Date') {
     out.push(`Expires=${toIMFDate(cookie.expires)}`)
   }
 
@@ -32621,6 +33102,8 @@ class EventSource extends EventTarget {
    * @readonly
    */
   get readyState () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#readyState
   }
 
@@ -32630,6 +33113,8 @@ class EventSource extends EventTarget {
    * @returns {string}
    */
   get url () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#url
   }
 
@@ -32638,6 +33123,8 @@ class EventSource extends EventTarget {
    * instantiated with CORS credentials set (true), or not (false, the default).
    */
   get withCredentials () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#withCredentials
   }
 
@@ -32793,7 +33280,7 @@ class EventSource extends EventTarget {
    * CLOSED.
    */
   close () {
-    webidl.brandCheck(this, EventSource)
+    webidl.brandCheck(this, webidl.is.EventSource)
 
     if (this.#readyState === CLOSED) return
     this.#readyState = CLOSED
@@ -32802,10 +33289,14 @@ class EventSource extends EventTarget {
   }
 
   get onopen () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.open
   }
 
   set onopen (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.open) {
       this.removeEventListener('open', this.#events.open)
     }
@@ -32821,10 +33312,14 @@ class EventSource extends EventTarget {
   }
 
   get onmessage () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.message
   }
 
   set onmessage (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.message) {
       this.removeEventListener('message', this.#events.message)
     }
@@ -32840,10 +33335,14 @@ class EventSource extends EventTarget {
   }
 
   get onerror () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.error
   }
 
   set onerror (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.error) {
       this.removeEventListener('error', this.#events.error)
     }
@@ -32855,6 +33354,12 @@ class EventSource extends EventTarget {
       this.#events.error = fn
     } else {
       this.#events.error = null
+    }
+  }
+
+  static {
+    webidl.is.EventSource = (arg) => {
+      return arg != null && typeof arg === 'object' && #events in arg
     }
   }
 }
@@ -33008,7 +33513,6 @@ module.exports = {
 
 const util = __nccwpck_require__(3440)
 const {
-  ReadableStreamFrom,
   readableStreamClose,
   fullyReadBody,
   extractMimeType
@@ -33203,8 +33707,16 @@ function extractBody (object, keepalive = false) {
       )
     }
 
-    stream =
-      webidl.is.ReadableStream(object) ? object : ReadableStreamFrom(object)
+    stream = webidl.is.ReadableStream(object)
+      ? object
+      : ReadableStream.from(object).pipeThrough(new TransformStream({
+        transform (chunk, controller) {
+          const bytes = isUint8Array(chunk) ? chunk : Buffer.from(chunk)
+          if (bytes.byteLength) {
+            controller.enqueue(bytes)
+          }
+        }
+      }))
   }
 
   // 11. If source is a byte sequence, then set action to a
@@ -33299,7 +33811,7 @@ function cloneBody (body) {
   }
 }
 
-function bodyMixinMethods (instance, getInternalState) {
+function bodyMixinMethods (brandCheck, getInternalState) {
   const methods = {
     blob () {
       // The blob() method steps are to return the result of
@@ -33319,7 +33831,7 @@ function bodyMixinMethods (instance, getInternalState) {
         // Return a Blob whose contents are bytes and type attribute
         // is mimeType.
         return new Blob([bytes], { type: mimeType })
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     arrayBuffer () {
@@ -33329,19 +33841,19 @@ function bodyMixinMethods (instance, getInternalState) {
       // whose contents are bytes.
       return consumeBody(this, (bytes) => {
         return new Uint8Array(bytes).buffer
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     text () {
       // The text() method steps are to return the result of running
       // consume body with this and UTF-8 decode.
-      return consumeBody(this, utf8DecodeBytes, instance, getInternalState)
+      return consumeBody(this, utf8DecodeBytes, brandCheck, getInternalState)
     },
 
     json () {
       // The json() method steps are to return the result of running
       // consume body with this and parse JSON from bytes.
-      return consumeBody(this, parseJSONFromBytes, instance, getInternalState)
+      return consumeBody(this, parseJSONFromBytes, brandCheck, getInternalState)
     },
 
     formData () {
@@ -33389,7 +33901,7 @@ function bodyMixinMethods (instance, getInternalState) {
         throw new TypeError(
           'Content-Type was not one of "multipart/form-data" or "application/x-www-form-urlencoded".'
         )
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     bytes () {
@@ -33398,7 +33910,7 @@ function bodyMixinMethods (instance, getInternalState) {
       // result of creating a Uint8Array from bytes in this’s relevant realm.
       return consumeBody(this, (bytes) => {
         return new Uint8Array(bytes)
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     textStream () {
@@ -33448,20 +33960,20 @@ function bodyMixinMethods (instance, getInternalState) {
   return methods
 }
 
-function mixinBody (prototype, getInternalState) {
-  Object.assign(prototype.prototype, bodyMixinMethods(prototype, getInternalState))
+function mixinBody (prototype, getInternalState, brandCheck) {
+  Object.assign(prototype.prototype, bodyMixinMethods(brandCheck, getInternalState))
 }
 
 /**
  * @see https://fetch.spec.whatwg.org/#concept-body-consume-body
  * @param {any} object internal state
  * @param {(value: unknown) => unknown} convertBytesToJSValue
- * @param {any} instance
+ * @param {import('../../../types/webidl').WebidlIsFunction} brandCheck
  * @param {(target: any) => any} getInternalState
  */
-function consumeBody (object, convertBytesToJSValue, instance, getInternalState) {
+function consumeBody (object, convertBytesToJSValue, brandCheck, getInternalState) {
   try {
-    webidl.brandCheck(object, instance)
+    webidl.brandCheck(object, brandCheck)
   } catch (e) {
     return Promise.reject(e)
   }
@@ -33701,14 +34213,14 @@ module.exports = {
 
 
 const assert = __nccwpck_require__(4589)
-const { forgivingBase64, collectASequenceOfCodePoints, collectASequenceOfCodePointsFast, isomorphicDecode, removeASCIIWhitespace, removeChars } = __nccwpck_require__(8116)
+const { asciiLowercase, forgivingBase64, collectASequenceOfCodePoints, collectASequenceOfCodePointsFast, isomorphicDecode, removeASCIIWhitespace, removeChars } = __nccwpck_require__(8116)
 
 const encoder = new TextEncoder()
 
 /**
  * @see https://mimesniff.spec.whatwg.org/#http-token-code-point
  */
-const HTTP_TOKEN_CODEPOINTS = /^[-!#$%&'*+.^_|~A-Za-z0-9]+$/u
+const HTTP_TOKEN_CODEPOINTS = /^[-!#$%&'*+.^_`|~A-Za-z0-9]+$/u
 const HTTP_WHITESPACE_REGEX = /[\u000A\u000D\u0009\u0020]/u // eslint-disable-line
 
 /**
@@ -33769,7 +34281,7 @@ function dataURLProcessor (dataURL) {
   // 11. If mimeType ends with U+003B (;), followed by
   // zero or more U+0020 SPACE, followed by an ASCII
   // case-insensitive match for "base64", then:
-  if (/;(?:\u0020*)base64$/ui.test(mimeType)) {
+  if (/;\u0020*[Bb][Aa][Ss][Ee]64$/u.test(mimeType)) {
     // 1. Let stringBody be the isomorphic decode of body.
     const stringBody = isomorphicDecode(body)
 
@@ -33968,8 +34480,8 @@ function parseMIMEType (input) {
     return 'failure'
   }
 
-  const typeLowercase = type.toLowerCase()
-  const subtypeLowercase = subtype.toLowerCase()
+  const typeLowercase = asciiLowercase(type)
+  const subtypeLowercase = asciiLowercase(subtype)
 
   // 10. Let mimeType be a new MIME type record whose type
   // is type, in ASCII lowercase, and subtype is subtype,
@@ -34009,7 +34521,7 @@ function parseMIMEType (input) {
 
     // 4. Set parameterName to parameterName, in ASCII
     // lowercase.
-    parameterName = parameterName.toLowerCase()
+    parameterName = asciiLowercase(parameterName)
 
     // 5. If position is not past the end of input, then:
     if (position.position < input.length) {
@@ -34908,6 +35420,8 @@ const random = runtimeFeatures.has('crypto')
   ? (__nccwpck_require__(7598).randomInt)
   : (max) => Math.floor(Math.random() * max)
 
+let getFormDataState, setFormDataState, getFormDataBoundary
+
 // https://xhr.spec.whatwg.org/#formdata
 class FormData {
   #state = []
@@ -34926,7 +35440,7 @@ class FormData {
   }
 
   append (name, value, filename = undefined) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.append'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -34954,7 +35468,7 @@ class FormData {
   }
 
   delete (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -34967,7 +35481,7 @@ class FormData {
   }
 
   get (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.get'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -34987,7 +35501,7 @@ class FormData {
   }
 
   getAll (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.getAll'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -35004,7 +35518,7 @@ class FormData {
   }
 
   has (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.has'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -35017,7 +35531,7 @@ class FormData {
   }
 
   set (name, value, filename = undefined) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.set'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -35082,40 +35596,34 @@ class FormData {
     return `FormData ${output.slice(output.indexOf(']') + 2)}`
   }
 
-  /**
-   * @param {FormData} formData
-   */
-  static getFormDataState (formData) {
-    return formData.#state
-  }
+  static {
+    /** @param {FormData} formData  */
+    getFormDataState = (formData) => formData.#state
 
-  /**
-   * @param {FormData} formData
-   * @param {any[]} newState
-   */
-  static setFormDataState (formData, newState) {
-    formData.#state = newState
-  }
+    /**
+     * @param {FormData} formData
+     * @param {any[]} newState
+     */
+    setFormDataState = (formData, newState) => {
+      formData.#state = newState
+    }
 
-  /**
-   * @param {FormData} formData
-   * @returns {string | null}
-   */
-  static getFormDataBoundary (formData) {
-    const boundary = formData.#boundary
-    if (boundary != null) return boundary
+    /**
+     * @param {FormData} formData
+     * @returns {string | null}
+     */
+    getFormDataBoundary = (formData) => {
+      // eslint-disable-next-line no-return-assign
+      return formData.#boundary ??= `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
+    }
 
-    // eslint-disable-next-line no-return-assign
-    return formData.#boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
+    webidl.is.FormData = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { getFormDataState, setFormDataState, getFormDataBoundary } = FormData
-Reflect.deleteProperty(FormData, 'getFormDataState')
-Reflect.deleteProperty(FormData, 'setFormDataState')
-Reflect.deleteProperty(FormData, 'getFormDataBoundary')
-
-iteratorMixin('FormData', FormData, getFormDataState, 'name', 'value')
+iteratorMixin('FormData', FormData, getFormDataState, 'name', 'value', webidl.is.FormData)
 
 Object.defineProperties(FormData.prototype, {
   append: kEnumerableProperty,
@@ -35170,8 +35678,6 @@ function makeEntry (name, value, filename) {
   // 4. Return an entry whose name is name and whose value is value.
   return { name, value }
 }
-
-webidl.is.FormData = webidl.util.MakeTypeAssertion(FormData)
 
 module.exports = { FormData, makeEntry, setFormDataState, getFormDataBoundary }
 
@@ -35655,6 +36161,8 @@ class HeadersList {
   }
 }
 
+let getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList
+
 // https://fetch.spec.whatwg.org/#headers-class
 class Headers {
   #guard
@@ -35690,7 +36198,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-append
   append (name, value) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 2, 'Headers.append')
 
@@ -35703,7 +36211,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-delete
   delete (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.delete')
 
@@ -35747,7 +36255,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-get
   get (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.get')
 
@@ -35770,7 +36278,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-has
   has (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.has')
 
@@ -35793,7 +36301,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-set
   set (name, value) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 2, 'Headers.set')
 
@@ -35841,7 +36349,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
   getSetCookie () {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     // 1. If this’s header list does not contain `Set-Cookie`, then return « ».
     // 2. Return the values of all headers in this’s header list whose name is
@@ -35862,37 +36370,38 @@ class Headers {
     return `Headers ${util.formatWithOptions(options, this.#headersList.entries)}`
   }
 
-  static getHeadersGuard (o) {
-    return o.#guard
-  }
+  static {
+    /** @param {Headers} headers */
+    getHeadersGuard = (headers) => headers.#guard
 
-  static setHeadersGuard (o, guard) {
-    o.#guard = guard
-  }
+    /**
+     * @param {Headers} headers
+     * @param {string} guard
+     */
+    setHeadersGuard = (headers, guard) => {
+      headers.#guard = guard
+    }
 
-  /**
-   * @param {Headers} o
-   */
-  static getHeadersList (o) {
-    return o.#headersList
-  }
+    /**
+     * @param {Headers} headers
+     */
+    getHeadersList = (headers) => headers.#headersList
 
-  /**
-   * @param {Headers} target
-   * @param {HeadersList} list
-   */
-  static setHeadersList (target, list) {
-    target.#headersList = list
+    /**
+     * @param {Headers} target
+     * @param {HeadersList} list
+     */
+    setHeadersList = (target, list) => {
+      target.#headersList = list
+    }
+
+    webidl.is.Headers = (arg) => {
+      return arg != null && typeof arg === 'object' && #guard in arg
+    }
   }
 }
 
-const { getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList } = Headers
-Reflect.deleteProperty(Headers, 'getHeadersGuard')
-Reflect.deleteProperty(Headers, 'setHeadersGuard')
-Reflect.deleteProperty(Headers, 'getHeadersList')
-Reflect.deleteProperty(Headers, 'setHeadersList')
-
-iteratorMixin('Headers', Headers, headersListSortAndCombine, 0, 1)
+iteratorMixin('Headers', Headers, headersListSortAndCombine, 0, 1, webidl.is.Headers)
 
 Object.defineProperties(Headers.prototype, {
   append: kEnumerableProperty,
@@ -36989,18 +37498,18 @@ function fetchFinale (fetchParams, response) {
   //    `Server-Timing` from response’s internal response’s header list.
   // TODO
 
-  // 3. Let processResponseEndOfBody be the following steps:
+  // 3. If fetchParams’s request’s destination is "document", then set fetchParams’s controller’s
+  //    full timing info to fetchParams’s timing info.
+  if (fetchParams.request.destination === 'document') {
+    fetchParams.controller.fullTimingInfo = timingInfo
+  }
+
+  // 4. Let processResponseEndOfBody be the following steps:
   const processResponseEndOfBody = () => {
     // 1. Let unsafeEndTime be the unsafe shared current time.
     const unsafeEndTime = Date.now() // ?
 
-    // 2. If fetchParams’s request’s destination is "document", then set fetchParams’s controller’s
-    //    full timing info to fetchParams’s timing info.
-    if (fetchParams.request.destination === 'document') {
-      fetchParams.controller.fullTimingInfo = timingInfo
-    }
-
-    // 3. Set fetchParams’s controller’s report timing steps to the following steps given a global object global:
+    // 2. Set fetchParams’s controller’s report timing steps to the following steps given a global object global:
     fetchParams.controller.reportTimingSteps = () => {
       // 1. If fetchParams’s request’s URL’s scheme is not an HTTP(S) scheme, then return.
       if (!urlIsHttpHttpsScheme(fetchParams.request.url)) {
@@ -37049,7 +37558,7 @@ function fetchFinale (fetchParams, response) {
       }
     }
 
-    // 4. Let processResponseEndOfBodyTask be the following steps:
+    // 3. Let processResponseEndOfBodyTask be the following steps:
     const processResponseEndOfBodyTask = () => {
       // 1. Set fetchParams’s request’s done flag.
       fetchParams.request.done = true
@@ -37068,11 +37577,11 @@ function fetchFinale (fetchParams, response) {
       }
     }
 
-    // 5. Queue a fetch task to run processResponseEndOfBodyTask with fetchParams’s task destination
+    // 4. Queue a fetch task to run processResponseEndOfBodyTask with fetchParams’s task destination
     queueMicrotask(() => processResponseEndOfBodyTask())
   }
 
-  // 4. If fetchParams’s process response is non-null, then queue a fetch task to run fetchParams’s
+  // 5. If fetchParams’s process response is non-null, then queue a fetch task to run fetchParams’s
   //    process response given response, with fetchParams’s task destination.
   if (fetchParams.processResponse != null) {
     queueMicrotask(() => {
@@ -37081,11 +37590,14 @@ function fetchFinale (fetchParams, response) {
     })
   }
 
-  // 5. Let internalResponse be response, if response is a network error; otherwise response’s internal response.
+  // 6. Let internalResponse be response, if response is a network error; otherwise response’s internal response.
   const internalResponse = response.type === 'error' ? response : (response.internalResponse ?? response)
 
-  // 6. If internalResponse’s body is null, then run processResponseEndOfBody.
-  // 7. Otherwise:
+  // 7. If response is a network error, then run the WebDriver BiDi fetch error steps with request.
+  //    Otherwise, run the WebDriver BiDi response completed steps with request and response.
+
+  // 8. If internalResponse’s body is null, then run processResponseEndOfBody.
+  // 9. Otherwise:
   if (internalResponse.body == null) {
     processResponseEndOfBody()
   } else {
@@ -37102,6 +37614,27 @@ function fetchFinale (fetchParams, response) {
     finished(internalResponse.body.stream, () => {
       processResponseEndOfBody()
     })
+  }
+
+  // 10. If fetchParams’s process response consume body is non-null, then:
+  if (fetchParams.processResponseConsumeBody != null) {
+    // 1. Let processBody given nullOrBytes be this step: run fetchParams’s
+    //    process response consume body given response and nullOrBytes.
+    const processBody = (nullOrBytes) => fetchParams.processResponseConsumeBody(response, nullOrBytes)
+
+    // 2. Let processBodyError be this step: run fetchParams’s process
+    //    response consume body given response and failure.
+    const processBodyError = () => fetchParams.processResponseConsumeBody(response, 'failure')
+
+    // 3. If internalResponse’s body is null, then queue a fetch task to run
+    //    processBody given null, with fetchParams’s task destination.
+    if (internalResponse.body == null) {
+      queueMicrotask(() => processBody(null))
+    } else {
+      // 4. Otherwise, fully read internalResponse’s body given processBody,
+      //    processBodyError, and fetchParams’s task destination.
+      fullyReadBody(internalResponse.body, processBody, processBodyError)
+    }
   }
 }
 
@@ -38482,6 +39015,7 @@ function buildAbort (acRef) {
 }
 
 let patchMethodWarning = false
+let setRequestSignal, getRequestDispatcher, setRequestDispatcher, setRequestHeaders, getRequestState, setRequestState, removeRequestAbortListener
 
 // https://fetch.spec.whatwg.org/#request-class
 class Request {
@@ -38999,7 +39533,7 @@ class Request {
 
   // Returns request’s HTTP method, which is "GET" by default.
   get method () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The method getter steps are to return this’s request’s method.
     return this.#state.method
@@ -39007,7 +39541,7 @@ class Request {
 
   // Returns the URL of request as a string.
   get url () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The url getter steps are to return this’s request’s URL, serialized.
     return URLSerializer(this.#state.url)
@@ -39017,7 +39551,7 @@ class Request {
   // Note that headers added in the network layer by the user agent will not
   // be accounted for in this object, e.g., the "Host" header.
   get headers () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The headers getter steps are to return this’s headers.
     return this.#headers
@@ -39026,7 +39560,7 @@ class Request {
   // Returns the kind of resource requested by request, e.g., "document"
   // or "script".
   get destination () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The destination getter are to return this’s request’s destination.
     return this.#state.destination
@@ -39038,7 +39572,7 @@ class Request {
   // during fetching to determine the value of the `Referer` header of the
   // request being made.
   get referrer () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // 1. If this’s request’s referrer is "no-referrer", then return the
     // empty string.
@@ -39060,7 +39594,7 @@ class Request {
   // This is used during fetching to compute the value of the request’s
   // referrer.
   get referrerPolicy () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The referrerPolicy getter steps are to return this’s request’s referrer policy.
     return this.#state.referrerPolicy
@@ -39070,7 +39604,7 @@ class Request {
   // whether the request will use CORS, or will be restricted to same-origin
   // URLs.
   get mode () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The mode getter steps are to return this’s request’s mode.
     return this.#state.mode
@@ -39080,7 +39614,7 @@ class Request {
   // which is a string indicating whether credentials will be sent with the
   // request always, never, or only when sent to a same-origin URL.
   get credentials () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The credentials getter steps are to return this’s request’s credentials mode.
     return this.#state.credentials
@@ -39090,7 +39624,7 @@ class Request {
   // which is a string indicating how the request will
   // interact with the browser’s cache when fetching.
   get cache () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The cache getter steps are to return this’s request’s cache mode.
     return this.#state.cache
@@ -39101,7 +39635,7 @@ class Request {
   // request will be handled during fetching. A request
   // will follow redirects by default.
   get redirect () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The redirect getter steps are to return this’s request’s redirect mode.
     return this.#state.redirect
@@ -39111,7 +39645,7 @@ class Request {
   // cryptographic hash of the resource being fetched. Its value
   // consists of multiple hashes separated by whitespace. [SRI]
   get integrity () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The integrity getter steps are to return this’s request’s integrity
     // metadata.
@@ -39121,7 +39655,7 @@ class Request {
   // Returns a boolean indicating whether or not request can outlive the
   // global in which it was created.
   get keepalive () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The keepalive getter steps are to return this’s request’s keepalive.
     return this.#state.keepalive
@@ -39130,7 +39664,7 @@ class Request {
   // Returns a boolean indicating whether or not request is for a reload
   // navigation.
   get isReloadNavigation () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The isReloadNavigation getter steps are to return true if this’s
     // request’s reload-navigation flag is set; otherwise false.
@@ -39140,7 +39674,7 @@ class Request {
   // Returns a boolean indicating whether or not request is for a history
   // navigation (a.k.a. back-forward navigation).
   get isHistoryNavigation () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The isHistoryNavigation getter steps are to return true if this’s request’s
     // history-navigation flag is set; otherwise false.
@@ -39151,33 +39685,33 @@ class Request {
   // object indicating whether or not request has been aborted, and its
   // abort event handler.
   get signal () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The signal getter steps are to return this’s signal.
     return this.#signal
   }
 
   get body () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return this.#state.body ? this.#state.body.stream : null
   }
 
   get bodyUsed () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return !!this.#state.body && util.isDisturbed(this.#state.body.stream)
   }
 
   get duplex () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return 'half'
   }
 
   // Returns a clone of request.
   clone () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // 1. If this is unusable, then throw a TypeError.
     if (bodyUnusable(this.#state)) {
@@ -39239,73 +39773,69 @@ class Request {
     return `Request ${nodeUtil.formatWithOptions(options, properties)}`
   }
 
-  /**
-   * @param {Request} request
-   * @param {AbortSignal} newSignal
-   */
-  static setRequestSignal (request, newSignal) {
-    request.#signal = newSignal
-    return request
-  }
+  static {
+    /**
+     * @param {Request} request
+     * @param {AbortSignal} newSignal
+     */
+    setRequestSignal = (request, newSignal) => {
+      request.#signal = newSignal
+    }
 
-  /**
-   * @param {Request} request
-   */
-  static getRequestDispatcher (request) {
-    return request.#dispatcher
-  }
+    /**
+     * @param {Request} request
+     */
+    getRequestDispatcher = (request) => {
+      return request.#dispatcher
+    }
 
-  /**
-   * @param {Request} request
-   * @param {import('../../dispatcher/dispatcher')} newDispatcher
-   */
-  static setRequestDispatcher (request, newDispatcher) {
-    request.#dispatcher = newDispatcher
-  }
+    /**
+     * @param {Request} request
+     * @param {import('../../dispatcher/dispatcher')} newDispatcher
+     */
+    setRequestDispatcher = (request, newDispatcher) => {
+      request.#dispatcher = newDispatcher
+    }
 
-  /**
-   * @param {Request} request
-   * @param {Headers} newHeaders
-   */
-  static setRequestHeaders (request, newHeaders) {
-    request.#headers = newHeaders
-  }
+    /**
+     * @param {Request} request
+     * @param {Headers} newHeaders
+     */
+    setRequestHeaders = (request, newHeaders) => {
+      request.#headers = newHeaders
+    }
 
-  /**
-   * @param {Request} request
-   */
-  static getRequestState (request) {
-    return request.#state
-  }
+    /**
+     * @param {Request} request
+     */
+    getRequestState = (request) => {
+      return request.#state
+    }
 
-  /**
-   * @param {Request} request
-   * @param {any} newState
-   */
-  static setRequestState (request, newState) {
-    request.#state = newState
-  }
+    /**
+     * @param {Request} request
+     * @param {any} newState
+     */
+    setRequestState = (request, newState) => {
+      request.#state = newState
+    }
 
-  /**
-   * Removes the `abort` listener that makes this request's signal follow the
-   * signal passed to its constructor, if any. Idempotent.
-   * @param {Request} request
-   */
-  static removeRequestAbortListener (request) {
-    request.#abortCleanup?.()
+    /**
+     * Removes the `abort` listener that makes this request's signal follow the
+     * signal passed to its constructor, if any. Idempotent.
+     * @param {Request} request
+     */
+    removeRequestAbortListener = (request) => {
+      request.#abortCleanup?.()
+    }
+
+    webidl.is.Request = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { setRequestSignal, getRequestDispatcher, setRequestDispatcher, setRequestHeaders, getRequestState, setRequestState, removeRequestAbortListener } = Request
-Reflect.deleteProperty(Request, 'setRequestSignal')
-Reflect.deleteProperty(Request, 'getRequestDispatcher')
-Reflect.deleteProperty(Request, 'setRequestDispatcher')
-Reflect.deleteProperty(Request, 'setRequestHeaders')
-Reflect.deleteProperty(Request, 'getRequestState')
-Reflect.deleteProperty(Request, 'setRequestState')
-Reflect.deleteProperty(Request, 'removeRequestAbortListener')
-
-mixinBody(Request, getRequestState)
+mixinBody(Request, getRequestState, webidl.is.Request)
 
 // https://fetch.spec.whatwg.org/#requests
 function makeRequest (init) {
@@ -39419,8 +39949,6 @@ Object.defineProperties(Request.prototype, {
     configurable: true
   }
 })
-
-webidl.is.Request = webidl.util.MakeTypeAssertion(Request)
 
 /**
  * @param {*} V
@@ -39574,6 +40102,7 @@ const assert = __nccwpck_require__(4589)
 const { isomorphicEncode, serializeJavascriptValueToJSONString } = __nccwpck_require__(8116)
 
 const textEncoder = new TextEncoder('utf-8')
+let getResponseHeaders, setResponseHeaders, getResponseState, setResponseState
 
 // https://fetch.spec.whatwg.org/#response-class
 class Response {
@@ -39696,7 +40225,7 @@ class Response {
 
   // Returns response’s type, e.g., "cors".
   get type () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The type getter steps are to return this’s response’s type.
     return this.#state.type
@@ -39704,7 +40233,7 @@ class Response {
 
   // Returns response’s URL, if it has one; otherwise the empty string.
   get url () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     const urlList = this.#state.urlList
 
@@ -39722,7 +40251,7 @@ class Response {
 
   // Returns whether response was obtained through a redirect.
   get redirected () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The redirected getter steps are to return true if this’s response’s URL
     // list has more than one item; otherwise false.
@@ -39731,7 +40260,7 @@ class Response {
 
   // Returns response’s status.
   get status () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The status getter steps are to return this’s response’s status.
     return this.#state.status
@@ -39739,7 +40268,7 @@ class Response {
 
   // Returns whether response’s status is an ok status.
   get ok () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The ok getter steps are to return true if this’s response’s status is an
     // ok status; otherwise false.
@@ -39748,7 +40277,7 @@ class Response {
 
   // Returns response’s status message.
   get statusText () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The statusText getter steps are to return this’s response’s status
     // message.
@@ -39757,27 +40286,27 @@ class Response {
 
   // Returns response’s headers as Headers.
   get headers () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The headers getter steps are to return this’s headers.
     return this.#headers
   }
 
   get body () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     return this.#state.body ? this.#state.body.stream : null
   }
 
   get bodyUsed () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     return !!this.#state.body && util.isDisturbed(this.#state.body.stream)
   }
 
   // Returns a clone of response.
   clone () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // 1. If this is unusable, then throw a TypeError.
     if (bodyUnusable(this.#state)) {
@@ -39823,44 +40352,44 @@ class Response {
     return `Response ${nodeUtil.formatWithOptions(options, properties)}`
   }
 
-  /**
-   * @param {Response} response
-   */
-  static getResponseHeaders (response) {
-    return response.#headers
-  }
+  static {
+    /**
+     * @param {Response} response
+     */
+    getResponseHeaders = (response) => {
+      return response.#headers
+    }
 
-  /**
-   * @param {Response} response
-   * @param {Headers} newHeaders
-   */
-  static setResponseHeaders (response, newHeaders) {
-    response.#headers = newHeaders
-  }
+    /**
+     * @param {Response} response
+     * @param {Headers} newHeaders
+     */
+    setResponseHeaders = (response, newHeaders) => {
+      response.#headers = newHeaders
+    }
 
-  /**
-   * @param {Response} response
-   */
-  static getResponseState (response) {
-    return response.#state
-  }
+    /**
+     * @param {Response} response
+     */
+    getResponseState = (response) => {
+      return response.#state
+    }
 
-  /**
-   * @param {Response} response
-   * @param {any} newState
-   */
-  static setResponseState (response, newState) {
-    response.#state = newState
+    /**
+     * @param {Response} response
+     * @param {any} newState
+     */
+    setResponseState = (response, newState) => {
+      response.#state = newState
+    }
+
+    webidl.is.Response = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { getResponseHeaders, setResponseHeaders, getResponseState, setResponseState } = Response
-Reflect.deleteProperty(Response, 'getResponseHeaders')
-Reflect.deleteProperty(Response, 'setResponseHeaders')
-Reflect.deleteProperty(Response, 'getResponseState')
-Reflect.deleteProperty(Response, 'setResponseState')
-
-mixinBody(Response, getResponseState)
+mixinBody(Response, getResponseState, webidl.is.Response)
 
 Object.defineProperties(Response.prototype, {
   type: kEnumerableProperty,
@@ -40175,8 +40704,6 @@ webidl.converters.ResponseInit = webidl.dictionaryConverter([
   }
 ])
 
-webidl.is.Response = webidl.util.MakeTypeAssertion(Response)
-
 module.exports = {
   isNetworkError,
   makeNetworkError,
@@ -40204,7 +40731,7 @@ const { redirectStatusSet, referrerPolicyTokens, badPortsSet } = __nccwpck_requi
 const { getGlobalOrigin } = __nccwpck_require__(1059)
 const { collectAnHTTPQuotedString, parseMIMEType } = __nccwpck_require__(1900)
 const { performance } = __nccwpck_require__(643)
-const { ReadableStreamFrom, isValidHTTPToken, normalizedMethodRecordsBase } = __nccwpck_require__(3440)
+const { isValidHTTPToken, normalizedMethodRecordsBase } = __nccwpck_require__(3440)
 const assert = __nccwpck_require__(4589)
 const { isUint8Array } = __nccwpck_require__(3429)
 const { webidl } = __nccwpck_require__(7879)
@@ -41070,8 +41597,9 @@ function createIterator (name, kInternalIterator, keyIndex = 0, valueIndex = 1) 
  * @param {(target: any) => any} kInternalIterator
  * @param {string | number} [keyIndex]
  * @param {string | number} [valueIndex]
+ * @param {import('../../../types/webidl').WebidlIsFunction} brandCheck
  */
-function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueIndex = 1) {
+function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueIndex = 1, brandCheck) {
   const makeIterator = createIterator(name, kInternalIterator, keyIndex, valueIndex)
 
   const properties = {
@@ -41080,7 +41608,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function keys () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'key')
       }
     },
@@ -41089,7 +41617,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function values () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'value')
       }
     },
@@ -41098,7 +41626,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function entries () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'key+value')
       }
     },
@@ -41107,7 +41635,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function forEach (callbackfn, thisArg = globalThis) {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         webidl.argumentLengthCheck(arguments, 1, `${name}.forEach`)
         if (typeof callbackfn !== 'function') {
           throw new TypeError(
@@ -41681,7 +42209,6 @@ module.exports = {
   isAborted,
   isCancelled,
   isValidEncodedURL,
-  ReadableStreamFrom,
   tryUpgradeRequestToAPotentiallyTrustworthyURL,
   clampAndCoarsenConnectionTimingInfo,
   coarsenedSharedCurrentTime,
@@ -41892,6 +42419,20 @@ function isomorphicEncode (input) {
   return input
 }
 
+const nonASCIIRegex = /[^\x00-\x7F]/ // eslint-disable-line no-control-regex
+
+/**
+ * @param {string} str
+ * @returns {string}
+ *
+ * @see https://infra.spec.whatwg.org/#ascii-lowercase
+ */
+function asciiLowercase (str) {
+  return nonASCIIRegex.test(str)
+    ? str.replace(/[A-Z]+/g, (upper) => upper.toLowerCase())
+    : str.toLowerCase()
+}
+
 /**
  * @see https://infra.spec.whatwg.org/#parse-json-bytes-to-a-javascript-value
  * @param {Uint8Array} bytes
@@ -41928,7 +42469,7 @@ function removeChars (str, leading, trailing, predicate) {
   }
 
   if (trailing) {
-    while (trail > 0 && predicate(str.charCodeAt(trail))) trail--
+    while (trail >= lead && predicate(str.charCodeAt(trail))) trail--
   }
 
   return lead === 0 && trail === str.length - 1 ? str : str.slice(lead, trail + 1)
@@ -41952,6 +42493,7 @@ function serializeJavascriptValueToJSONString (value) {
 }
 
 module.exports = {
+  asciiLowercase,
   collectASequenceOfCodePoints,
   collectASequenceOfCodePointsFast,
   forgivingBase64,
@@ -42361,23 +42903,11 @@ webidl.errors.invalidArgument = function (context) {
 }
 
 // https://webidl.spec.whatwg.org/#implements
-webidl.brandCheck = function (V, I) {
-  if (!FunctionPrototypeSymbolHasInstance(I, V)) {
+webidl.brandCheck = function (V, is) {
+  if (!is(V)) {
     const err = new TypeError('Illegal invocation')
     err.code = 'ERR_INVALID_THIS' // node compat.
     throw err
-  }
-}
-
-webidl.brandCheckMultiple = function (List) {
-  const prototypes = List.map((c) => webidl.util.MakeTypeAssertion(c))
-
-  return (V) => {
-    if (prototypes.every(typeCheck => !typeCheck(V))) {
-      const err = new TypeError('Illegal invocation')
-      err.code = 'ERR_INVALID_THIS' // node compat.
-      throw err
-    }
   }
 }
 
@@ -43775,6 +44305,8 @@ const { webidl } = __nccwpck_require__(7879)
 const { kEnumerableProperty } = __nccwpck_require__(3440)
 const { kConstruct } = __nccwpck_require__(6443)
 
+let createFastMessageEvent
+
 /**
  * @see https://html.spec.whatwg.org/multipage/comms.html#messageevent
  */
@@ -43801,31 +44333,31 @@ class MessageEvent extends Event {
   }
 
   get data () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.data
   }
 
   get origin () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.origin
   }
 
   get lastEventId () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.lastEventId
   }
 
   get source () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.source
   }
 
   get ports () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     if (!Object.isFrozen(this.#eventInit.ports)) {
       Object.freeze(this.#eventInit.ports)
@@ -43844,7 +44376,7 @@ class MessageEvent extends Event {
     source = null,
     ports = []
   ) {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     webidl.argumentLengthCheck(arguments, 1, 'MessageEvent.initMessageEvent')
 
@@ -43853,20 +44385,23 @@ class MessageEvent extends Event {
     })
   }
 
-  static createFastMessageEvent (type, init) {
-    const messageEvent = new MessageEvent(kConstruct, type, init)
-    messageEvent.#eventInit = init
-    messageEvent.#eventInit.data ??= null
-    messageEvent.#eventInit.origin ??= ''
-    messageEvent.#eventInit.lastEventId ??= ''
-    messageEvent.#eventInit.source ??= null
-    messageEvent.#eventInit.ports ??= []
-    return messageEvent
+  static {
+    createFastMessageEvent = (type, init) => {
+      const messageEvent = new MessageEvent(kConstruct, type, init)
+      messageEvent.#eventInit = init
+      messageEvent.#eventInit.data ??= null
+      messageEvent.#eventInit.origin ??= ''
+      messageEvent.#eventInit.lastEventId ??= ''
+      messageEvent.#eventInit.source ??= null
+      messageEvent.#eventInit.ports ??= []
+      return messageEvent
+    }
+
+    webidl.is.MessageEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
-
-const { createFastMessageEvent } = MessageEvent
-delete MessageEvent.createFastMessageEvent
 
 /**
  * @see https://websockets.spec.whatwg.org/#the-closeevent-interface
@@ -43888,21 +44423,27 @@ class CloseEvent extends Event {
   }
 
   get wasClean () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.wasClean
   }
 
   get code () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.code
   }
 
   get reason () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.reason
+  }
+
+  static {
+    webidl.is.CloseEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
 
@@ -43924,33 +44465,39 @@ class ErrorEvent extends Event {
   }
 
   get message () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.message
   }
 
   get filename () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.filename
   }
 
   get lineno () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.lineno
   }
 
   get colno () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.colno
   }
 
   get error () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.error
+  }
+
+  static {
+    webidl.is.ErrorEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
 
@@ -44727,6 +45274,11 @@ class ByteParser extends Writable {
   consumeFragments () {
     const fragments = this.#fragments
 
+    // The compressed flag describes the message that is being completed here.
+    // It must not survive into the next message, otherwise a stray
+    // continuation frame is accepted instead of failing the connection.
+    this.#info.compressed = false
+
     if (fragments.length === 1) {
       // single fragment
       this.#fragmentsBytes = 0
@@ -45016,6 +45568,8 @@ function createInheritableDOMException () {
   })
 }
 
+let createUnvalidatedWebSocketError
+
 class WebSocketError extends createInheritableDOMException() {
   #closeCode
   #reason
@@ -45067,16 +45621,19 @@ class WebSocketError extends createInheritableDOMException() {
    * @param {number|null} code
    * @param {string} reason
    */
-  static createUnvalidatedWebSocketError (message, code, reason) {
-    const error = new WebSocketError(message, kConstruct)
-    error.#closeCode = code
-    error.#reason = reason
-    return error
+  static {
+    createUnvalidatedWebSocketError = (message, code, reason) => {
+      const error = new WebSocketError(message, kConstruct)
+      error.#closeCode = code
+      error.#reason = reason
+      return error
+    }
+
+    webidl.is.WebSocketError = (arg) => {
+      return arg != null && typeof arg === 'object' && #reason in arg
+    }
   }
 }
-
-const { createUnvalidatedWebSocketError } = WebSocketError
-delete WebSocketError.createUnvalidatedWebSocketError
 
 Object.defineProperties(WebSocketError.prototype, {
   closeCode: kEnumerableProperty,
@@ -45088,8 +45645,6 @@ Object.defineProperties(WebSocketError.prototype, {
     configurable: true
   }
 })
-
-webidl.is.WebSocketError = webidl.util.MakeTypeAssertion(WebSocketError)
 
 module.exports = { WebSocketError, createUnvalidatedWebSocketError }
 
@@ -45989,6 +46544,8 @@ const { channels } = __nccwpck_require__(2414)
 const kRef = Symbol.for('nodejs.ref')
 const kUnref = Symbol.for('nodejs.unref')
 
+let ping
+
 function getSocketAddress (socket) {
   if (typeof socket?.address === 'function') {
     return socket.address()
@@ -46159,16 +46716,14 @@ class WebSocket extends EventTarget {
     this.#binaryType = 'blob'
   }
 
+  // TODO: remove this
   [kRef] () {
-    webidl.brandCheck(this, WebSocket)
-
     this.#refed = true
     this.#handler.socket?.ref?.()
   }
 
+  // TODO: remove this
   [kUnref] () {
-    webidl.brandCheck(this, WebSocket)
-
     this.#refed = false
     this.#handler.socket?.unref?.()
   }
@@ -46179,7 +46734,7 @@ class WebSocket extends EventTarget {
    * @param {string|undefined} reason
    */
   close (code = undefined, reason = undefined) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     const prefix = 'WebSocket.close'
 
@@ -46206,7 +46761,7 @@ class WebSocket extends EventTarget {
    * @param {NodeJS.TypedArray|ArrayBuffer|Blob|string} data
    */
   send (data) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     const prefix = 'WebSocket.send'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -46300,45 +46855,45 @@ class WebSocket extends EventTarget {
   }
 
   get readyState () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     // The readyState getter steps are to return this's ready state.
     return this.#handler.readyState
   }
 
   get bufferedAmount () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#bufferedAmount
   }
 
   get url () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     // The url getter steps are to return this's url, serialized.
     return URLSerializer(this.#url)
   }
 
   get extensions () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#extensions
   }
 
   get protocol () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#protocol
   }
 
   get onopen () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.open
   }
 
   set onopen (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.open) {
       this.removeEventListener('open', this.#events.open)
@@ -46355,13 +46910,13 @@ class WebSocket extends EventTarget {
   }
 
   get onerror () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.error
   }
 
   set onerror (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.error) {
       this.removeEventListener('error', this.#events.error)
@@ -46378,13 +46933,13 @@ class WebSocket extends EventTarget {
   }
 
   get onclose () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.close
   }
 
   set onclose (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.close) {
       this.removeEventListener('close', this.#events.close)
@@ -46401,13 +46956,13 @@ class WebSocket extends EventTarget {
   }
 
   get onmessage () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.message
   }
 
   set onmessage (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.message) {
       this.removeEventListener('message', this.#events.message)
@@ -46424,13 +46979,13 @@ class WebSocket extends EventTarget {
   }
 
   get binaryType () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#binaryType
   }
 
   set binaryType (type) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (type !== 'blob' && type !== 'arraybuffer') {
       this.#binaryType = 'blob'
@@ -46615,32 +47170,35 @@ class WebSocket extends EventTarget {
     }
   }
 
-  /**
-   * @param {WebSocket} ws
-   * @param {Buffer|undefined} buffer
-   */
-  static ping (ws, buffer) {
-    if (Buffer.isBuffer(buffer)) {
-      if (buffer.length > 125) {
-        throw new TypeError('A PING frame cannot have a body larger than 125 bytes.')
+  static {
+    /**
+     * @param {WebSocket} ws
+     * @param {Buffer|undefined} buffer
+     */
+    ping = (ws, buffer) => {
+      if (Buffer.isBuffer(buffer)) {
+        if (buffer.length > 125) {
+          throw new TypeError('A PING frame cannot have a body larger than 125 bytes.')
+        }
+      } else if (buffer !== undefined) {
+        throw new TypeError('Expected buffer payload')
       }
-    } else if (buffer !== undefined) {
-      throw new TypeError('Expected buffer payload')
+
+      // An endpoint MAY send a Ping frame any time after the connection is
+      // established and before the connection is closed.
+      const readyState = ws.#handler.readyState
+
+      if (isEstablished(readyState) && !isClosing(readyState) && !isClosed(readyState)) {
+        const frame = new WebsocketFrameSend(buffer)
+        ws.#handler.socket.write(frame.createFrame(opcodes.PING))
+      }
     }
 
-    // An endpoint MAY send a Ping frame any time after the connection is
-    // established and before the connection is closed.
-    const readyState = ws.#handler.readyState
-
-    if (isEstablished(readyState) && !isClosing(readyState) && !isClosed(readyState)) {
-      const frame = new WebsocketFrameSend(buffer)
-      ws.#handler.socket.write(frame.createFrame(opcodes.PING))
+    webidl.is.WebSocket = (arg) => {
+      return arg != null && typeof arg === 'object' && #handler in arg
     }
   }
 }
-
-const { ping } = WebSocket
-Reflect.deleteProperty(WebSocket, 'ping')
 
 // https://websockets.spec.whatwg.org/#dom-websocket-connecting
 WebSocket.CONNECTING = WebSocket.prototype.CONNECTING = states.CONNECTING
@@ -55596,7 +56154,6 @@ const { addAbortListener } = __nccwpck_require2_(8474)
 const { Readable } = __nccwpck_require2_(7075)
 const { RequestAbortedError, NotSupportedError, InvalidArgumentError, AbortError } = __nccwpck_require2_(8707)
 const util = __nccwpck_require2_(3440)
-const { ReadableStreamFrom } = __nccwpck_require2_(3440)
 
 const kConsume = Symbol('kConsume')
 const kReading = Symbol('kReading')
@@ -55837,7 +56394,7 @@ class BodyReadable extends Readable {
    */
   get body () {
     if (!this[kBody]) {
-      this[kBody] = ReadableStreamFrom(this)
+      this[kBody] = ReadableStream.from(this)
       if (this[kConsume]) {
         // TODO: Is this the best way to force a lock?
         this[kBody].getReader() // Ensure stream is locked.
@@ -58415,9 +58972,21 @@ class Request {
     }
   }
 
-  onRequestUpgrade (statusCode, headers, socket) {
+  /**
+   * @param {number} statusCode
+   * @param {Buffer[]|string[]|import('../../types/header.d.ts').IncomingHttpHeaders} headers
+   * @param {import('node:stream').Duplex} socket
+   * @param {string} [statusText]
+   */
+  onRequestUpgrade (statusCode, headers, socket, statusText = '') {
+    this.onFinally()
+
     assert(!this.aborted)
     assert(!this.completed)
+
+    if (channels.headers.hasSubscribers) {
+      channels.headers.publish({ request: this, response: { statusCode, headers, statusText } })
+    }
 
     const controller = this[kController]
     if (controller) {
@@ -58426,7 +58995,16 @@ class Request {
 
     const parsedHeaders = Array.isArray(headers) ? parseHeaders(headers) : headers
 
-    return this[kHandler].onRequestUpgrade?.(controller, statusCode, parsedHeaders, socket)
+    const result = this[kHandler].onRequestUpgrade?.(controller, statusCode, parsedHeaders, socket)
+
+    if (!this.aborted) {
+      this.completed = true
+      if (channels.trailers.hasSubscribers) {
+        channels.trailers.publish({ request: this, trailers: [] })
+      }
+    }
+
+    return result
   }
 
   onResponseEnd (trailers) {
@@ -60151,44 +60729,6 @@ function getSocketInfo (socket) {
 }
 
 /**
- * @param {Iterable} iterable
- * @returns {ReadableStream}
- */
-function ReadableStreamFrom (iterable) {
-  // We cannot use ReadableStream.from here because it does not return a byte stream.
-
-  let iterator
-  return new ReadableStream(
-    {
-      start () {
-        iterator = iterable[Symbol.asyncIterator]()
-      },
-      pull (controller) {
-        return iterator.next().then(({ done, value }) => {
-          if (done) {
-            return queueMicrotask(() => {
-              controller.close()
-              controller.byobRequest?.respond(0)
-            })
-          } else {
-            const buf = Buffer.isBuffer(value) ? value : Buffer.from(value)
-            if (buf.byteLength) {
-              return controller.enqueue(new Uint8Array(buf))
-            } else {
-              return this.pull(controller)
-            }
-          }
-        })
-      },
-      cancel () {
-        return iterator.return()
-      },
-      type: 'bytes'
-    }
-  )
-}
-
-/**
  * The object should be a FormData instance and contains all the required
  * methods.
  * @param {*} object
@@ -60532,7 +61072,6 @@ module.exports = {
   destroy,
   bodyLength,
   deepClone,
-  ReadableStreamFrom,
   isBuffer,
   assertRequestHandler,
   getSocketInfo,
@@ -61043,8 +61582,14 @@ function lazyllhttp () {
 
   let mod
 
-  // We disable wasm SIMD on ppc64 as it seems to be broken on Power 9 architectures.
-  let useWasmSIMD = process.arch !== 'ppc64'
+  // We disable wasm SIMD on older versions of Node.js on ppc64 that are broken on Power >=9 architectures.
+  let useWasmSIMD = true
+  if (process.arch === 'ppc64') {
+    const [major, minor] = process.versions.node.split('.').map(n => parseInt(n, 10))
+    if (major < 24 || (major === 24 && minor < 12)) {
+      useWasmSIMD = false
+    }
+  }
   // The Env Variable UNDICI_NO_WASM_SIMD allows explicitly overriding the default behavior
   if (process.env.UNDICI_NO_WASM_SIMD === '1') {
     useWasmSIMD = false
@@ -61534,7 +62079,7 @@ class Parser {
    * @param {Buffer} head
    */
   onUpgrade (head) {
-    const { upgrade, client, socket, headers, statusCode } = this
+    const { upgrade, client, socket, headers, statusCode, statusText } = this
 
     assert(upgrade)
     assert(client[kSocket] === socket)
@@ -61569,8 +62114,9 @@ class Parser {
     client.emit('disconnect', client[kUrl], [client], new InformationalError('upgrade'))
 
     try {
-      request.onRequestUpgrade(statusCode, headers, socket)
+      request.onRequestUpgrade(statusCode, headers, socket, statusText)
     } catch (err) {
+      util.errorRequest(client, request, err)
       util.destroy(socket, err)
     }
 
@@ -62787,6 +63333,7 @@ const { pipeline } = __nccwpck_require2_(7075)
 const util = __nccwpck_require2_(3440)
 const {
   RequestContentLengthMismatchError,
+  ResponseContentLengthMismatchError,
   RequestAbortedError,
   SocketError,
   InformationalError,
@@ -62973,6 +63520,11 @@ function canReplayRequest (request) {
   const { body } = request
 
   return body == null || util.isBuffer(body) || util.isBlobLike(body)
+}
+
+function hasResponseStarted (request) {
+  const state = request[kRequestStream]?.[kRequestStreamState]
+  return state?.responseReceived === true
 }
 
 // Count a GOAWAY refusal against the request's replay budget. A peer that
@@ -63188,7 +63740,8 @@ function resumeH2 (client) {
   const session = client[kHTTP2Session]
 
   if (socket?.destroyed === false) {
-    if (client[kSize] === 0 || client[kMaxConcurrentStreams] === 0) {
+    // After an upgrade the queue is empty but its stream is still in use, so never unref while a stream is open.
+    if (session[kOpenStreams] === 0 && client[kSize] === 0) {
       unrefH2Session(session)
     } else {
       refH2Session(session)
@@ -63422,9 +63975,12 @@ function onHttp2SessionGoAway (errorCode, lastStreamID) {
     const request = client[kQueue][i]
 
     if (request != null) {
+      // Read before detaching, which drops the stream state.
+      const responseStarted = hasResponseStarted(request)
+
       streamsToClose.push(detachRequestStreamForClose(request))
 
-      if (canReplayRequest(request) && registerGoAwayRefusal(request)) {
+      if (!responseStarted && canReplayRequest(request) && registerGoAwayRefusal(request)) {
         retriableRequests.push(request)
       } else {
         util.errorRequest(client, request, err)
@@ -63552,10 +64108,12 @@ function noop () {}
 
 function closeStreamSession (stream) {
   const session = stream[kHTTP2Session]
+  const client = session[kClient]
 
   stream[kHTTP2Session] = null
   session[kOpenStreams] -= 1
-  if (session[kOpenStreams] === 0) {
+  // A session that received GOAWAY does not need to stay ref'd for queued requests.
+  if (session[kOpenStreams] === 0 && (client[kSize] === 0 || session[kReceivedGoAway])) {
     unrefH2Session(session)
     setHttp2IdleTimeout(session)
   }
@@ -63713,9 +64271,14 @@ function onUpgradeResponse (headers, _flags) {
   const statusCode = headers[HTTP2_HEADER_STATUS]
   delete headers[HTTP2_HEADER_STATUS]
 
-  request.onRequestUpgrade(statusCode, headers, stream)
+  try {
+    request.onRequestUpgrade(statusCode, headers, stream)
+  } catch (err) {
+    state.abort(err)
+    return
+  }
 
-  if (request.aborted || request.completed) {
+  if (request.aborted) {
     return
   }
 
@@ -63815,6 +64378,7 @@ function writeH2 (client, request) {
     headersTimeout,
     bodyTimeout,
     requestFinalized: false,
+    responseContentLength: null,
     responseReceived: false,
     bodySent: false,
     pendingEnd: false,
@@ -64110,9 +64674,14 @@ function onData (chunk) {
     return
   }
 
-  const { request, maxResponseSize } = state
+  const { request, maxResponseSize, responseContentLength } = state
 
   if (request.aborted || request.completed) {
+    return
+  }
+
+  if (responseContentLength != null && state.bytesRead + chunk.length > responseContentLength) {
+    state.abort(new ResponseContentLengthMismatchError())
     return
   }
 
@@ -64174,10 +64743,19 @@ function onResponse (headers) {
     stream.end()
   }
 
-  const statusCode = headers[HTTP2_HEADER_STATUS]
+  const statusCode = Number(headers[HTTP2_HEADER_STATUS])
   delete headers[HTTP2_HEADER_STATUS]
   request.onResponseStarted()
   state.responseReceived = true
+
+  // A Content-Length in HEAD and 304 responses describes the selected
+  // representation rather than DATA on this stream. Successful CONNECT uses
+  // the upgrade path above; all other final responses use Content-Length as
+  // their DATA payload length.
+  if (request.method !== 'HEAD' && statusCode !== 304) {
+    const contentLength = headers[HTTP2_HEADER_CONTENT_LENGTH]
+    state.responseContentLength = contentLength == null ? null : Number(contentLength)
+  }
 
   if (state.headersTimeout || state.bodyTimeout) {
     stream.setTimeout(state.bodyTimeout)
@@ -64196,7 +64774,7 @@ function onResponse (headers) {
     return
   }
 
-  if (request.onResponseStart(Number(statusCode), headers, stream.resume.bind(stream), '') === false) {
+  if (request.onResponseStart(statusCode, headers, stream.resume.bind(stream), '') === false) {
     stream.pause()
   }
 
@@ -64219,6 +64797,11 @@ function onEnd () {
   // trailers on the state by now, so completing here still delivers them.
   if (state.responseReceived) {
     if (!request.aborted && !request.completed) {
+      if (state.responseContentLength != null && state.bytesRead !== state.responseContentLength) {
+        state.abort(new ResponseContentLengthMismatchError())
+        return
+      }
+
       state.pendingEnd = true
 
       // Complete on 'end': a blocked event loop can keep the stream's 'close'
@@ -64274,6 +64857,13 @@ function onError (err) {
   }
 
   stream.off('error', onError)
+
+  // Node's HTTP/2 implementation can turn an incomplete Content-Length body
+  // into a protocol stream error instead of emitting 'end'. Prefer the
+  // content-length mismatch error when the received byte count proves it.
+  if (state.responseContentLength != null && state.bytesRead !== state.responseContentLength) {
+    err = new ResponseContentLengthMismatchError()
+  }
 
   if (typeof stream.rstCode === 'number' && stream.rstCode !== NGHTTP2_NO_ERROR) {
     err.http2ErrorCode = stream.rstCode
@@ -64809,7 +65399,7 @@ class Client extends DispatcherBase {
           throw new InvalidArgumentError('h2Options.settings.initialWindowSize must be a positive integer, greater than 0')
         }
 
-        if (h2Options.maxConcurrentStreams != null && (!Number.isInteger(h2Options.connectionWindowSize) || h2Options.maxConcurrentStreams < 1)) {
+        if (h2Options.maxConcurrentStreams != null && (!Number.isInteger(h2Options.maxConcurrentStreams) || h2Options.maxConcurrentStreams < 1)) {
           throw new InvalidArgumentError('h2Options.maxConcurrentStreams must be a positive integer, greater than 0')
         }
 
@@ -65680,9 +66270,10 @@ class Dispatcher1Wrapper extends Dispatcher {
   }
 
   dispatch (opts, handler) {
-    // Legacy (v1) consumers do not support HTTP/2, so force HTTP/1.1.
+    // Legacy (v1) WebSocket consumers do not support falling back to HTTP/1.1
+    // when HTTP/2 Extended CONNECT is unavailable.
     // See https://github.com/nodejs/undici/issues/4989
-    if (opts.allowH2 !== false) {
+    if (opts.upgrade && opts.allowH2 !== false) {
       opts = { ...opts, allowH2: false }
     }
 
@@ -65803,17 +66394,25 @@ class EnvHttpProxyAgent extends DispatcherBase {
     if (this.#noProxyEntries.length === 0) {
       return true // Always proxy if NO_PROXY is not set or empty.
     }
-    if (this.#noProxyValue === '*') {
-      return false // Never proxy if wildcard is set.
-    }
 
     for (let i = 0; i < this.#noProxyEntries.length; i++) {
       const entry = this.#noProxyEntries[i]
+      // A bare `*` entry matches all hosts regardless of its position or the
+      // surrounding whitespace (e.g. ` * ` or `none.invalid,*`). If a port is
+      // attached (`*:80`) it only bypasses that port.
+      if (entry.hostname === '*') {
+        if (entry.port && entry.port !== port) {
+          continue
+        }
+        return false // Never proxy if a wildcard entry is present.
+      }
       if (entry.port && entry.port !== port) {
         continue // Skip if ports don't match.
       }
-      // Don't proxy if the hostname is equal with the no_proxy host.
-      if (hostname === entry.hostname) {
+      // Don't proxy if the hostname is equal with the no_proxy host. A
+      // `*.example.com` wildcard matches subdomains only, not the apex
+      // `example.com`, so exact matches are skipped for wildcard entries.
+      if (!entry.wildcard && hostname === entry.hostname) {
         return false
       }
       // Don't proxy if the hostname is the subdomain of the no_proxy host.
@@ -65858,10 +66457,17 @@ class EnvHttpProxyAgent extends DispatcherBase {
         port = parsed ? Number.parseInt(parsed[2], 10) : 0
       }
 
+      // A leading `*` marks a subdomain wildcard (`*.example.com`), distinct
+      // from a plain or leading-dot suffix (`example.com` / `.example.com`)
+      // which also matches the apex. `*.example.com` must only match
+      // subdomains, never the apex `example.com` itself.
+      const wildcard = entry.charCodeAt(0) === 42 /* '*' */
+
       noProxyEntries.push({
         // strip leading dot or asterisk with dot, and any trailing dot
         hostname: hostname.replace(/^\*?\./, '').replace(/^(.+)\.$/, '$1').toLowerCase(),
-        port
+        port,
+        wildcard
       })
     }
 
@@ -66107,6 +66713,9 @@ const kOnDrain = Symbol('onDrain')
 const kOnConnect = Symbol('onConnect')
 const kOnDisconnect = Symbol('onDisconnect')
 const kOnConnectionError = Symbol('onConnectionError')
+const kOnClientBusy = Symbol('on client busy')
+const kOnClientDrain = Symbol('on client drain')
+const kDrainQueue = Symbol('drain queue')
 const kGetDispatcher = Symbol('get dispatcher')
 const kHasDispatcher = Symbol('has dispatcher')
 const kAddClient = Symbol('add client')
@@ -66122,9 +66731,14 @@ class PoolBase extends DispatcherBase {
   [kNeedDrain] = false;
 
   [kOnDrain] (client, origin, targets) {
-    const queue = this[kQueue]
+    if (client.closed || client.destroyed) {
+      return
+    }
 
+    const queue = this[kQueue]
     let needDrain = false
+
+    this[kOnClientDrain](client)
 
     while (!needDrain) {
       const item = queue.shift()
@@ -66136,8 +66750,57 @@ class PoolBase extends DispatcherBase {
     }
 
     client[kNeedDrain] = needDrain
+    if (needDrain) {
+      this[kOnClientBusy](client)
+    }
 
     if (!needDrain && this[kNeedDrain]) {
+      this[kNeedDrain] = false
+      this.emit('drain', origin, [this, ...targets])
+    }
+
+    if (this[kClosedResolve] && queue.isEmpty()) {
+      const closeAll = []
+      for (let i = 0; i < this[kClients].length; i++) {
+        const client = this[kClients][i]
+        if (!client.destroyed) {
+          closeAll.push(client.close())
+        }
+      }
+      return Promise.all(closeAll)
+        .then(this[kClosedResolve])
+    }
+  }
+
+  [kOnClientBusy] () {}
+
+  [kOnClientDrain] () {}
+
+  [kDrainQueue] (origin, targets) {
+    const queue = this[kQueue]
+    let hasDispatcher = true
+
+    while (!queue.isEmpty()) {
+      const dispatcher = this[kGetDispatcher]()
+      if (!dispatcher) {
+        hasDispatcher = false
+        break
+      }
+
+      const item = queue.shift()
+      this[kQueued]--
+
+      if (!dispatcher.dispatch(item.opts, item.handler)) {
+        dispatcher[kNeedDrain] = true
+        this[kOnClientBusy](dispatcher)
+        hasDispatcher = this[kHasDispatcher]()
+        if (!hasDispatcher) {
+          break
+        }
+      }
+    }
+
+    if (hasDispatcher && this[kNeedDrain]) {
       this[kNeedDrain] = false
       this.emit('drain', origin, [this, ...targets])
     }
@@ -66257,6 +66920,7 @@ class PoolBase extends DispatcherBase {
       this[kQueued]++
     } else if (!dispatcher.dispatch(opts, handler)) {
       dispatcher[kNeedDrain] = true
+      this[kOnClientBusy](dispatcher)
       this[kNeedDrain] = !this[kHasDispatcher]()
     }
 
@@ -66290,7 +66954,7 @@ class PoolBase extends DispatcherBase {
 
     if (this[kNeedDrain]) {
       queueMicrotask(() => {
-        if (this[kNeedDrain]) {
+        if (this[kNeedDrain] && !client[kNeedDrain]) {
           this[kOnDrain](client, client[kUrl], [client, this])
         }
       })
@@ -66321,6 +66985,9 @@ module.exports = {
   kNeedDrain,
   kAddClient,
   kRemoveClient,
+  kDrainQueue,
+  kOnClientBusy,
+  kOnClientDrain,
   kGetDispatcher,
   kHasDispatcher
 }
@@ -66339,6 +67006,9 @@ const {
   kClients,
   kNeedDrain,
   kAddClient,
+  kDrainQueue,
+  kOnClientBusy,
+  kOnClientDrain,
   kGetDispatcher,
   kHasDispatcher,
   kRemoveClient
@@ -66348,15 +67018,39 @@ const {
   InvalidArgumentError
 } = __nccwpck_require2_(8707)
 const util = __nccwpck_require2_(3440)
-const { kUrl } = __nccwpck_require2_(6443)
+const { kConnecting, kHTTPContext, kUrl } = __nccwpck_require2_(6443)
 const buildConnector = __nccwpck_require2_(9136)
 
 const kOptions = Symbol('options')
 const kConnections = Symbol('connections')
 const kFactory = Symbol('factory')
+const kProtocol = Symbol('protocol')
+const kProtocolProbe = Symbol('protocol probe')
 
 function defaultFactory (origin, opts) {
   return new Client(origin, opts)
+}
+
+function shouldCreateProtocolProbe (pool, dispatcher) {
+  return dispatcher instanceof Client &&
+    pool[kProtocol] !== 'h1' &&
+    (pool[kOptions].useH2c === true || (pool[kUrl].protocol === 'https:' && pool[kOptions].allowH2 !== false))
+}
+
+function createClient (pool) {
+  const dispatcher = pool[kFactory](pool[kUrl], pool[kOptions])
+
+  // HTTPS does not reveal whether the peer selected h1 or h2 until ALPN
+  // completes. While h2 is still possible, let one Client probe the protocol
+  // and keep later requests in the Pool queue instead of opening one TLS
+  // connection per request. A confirmed h1 connection disables this gate and
+  // restores the usual Pool fan-out.
+  if (shouldCreateProtocolProbe(pool, dispatcher)) {
+    pool[kProtocolProbe] = dispatcher
+  }
+
+  pool[kAddClient](dispatcher)
+  return dispatcher
 }
 
 class Pool extends PoolBase {
@@ -66406,6 +67100,8 @@ class Pool extends PoolBase {
     this[kUrl] = util.parseOrigin(origin)
     this[kOptions] = { ...util.deepClone(options), connect, allowH2, useH2c, clientTtl, socketPath }
     this[kFactory] = factory
+    this[kProtocol] = null
+    this[kProtocolProbe] = null
 
     this.on('connect', (origin, targets) => {
       if (clientTtl != null && clientTtl > 0) {
@@ -66413,13 +67109,42 @@ class Pool extends PoolBase {
           Object.assign(target, { ttl: Date.now() })
         }
       }
+
+      const client = targets[targets.length - 1]
+      if (client instanceof Client) {
+        this[kProtocol] = client[kHTTPContext]?.version
+      }
+
+      if (client === this[kProtocolProbe]) {
+        // An h2 Client's drain event releases the requests accumulated during
+        // negotiation onto that Client. If ALPN selected h1, release the probe
+        // immediately and restore normal Pool fan-out instead.
+        if (this[kProtocol] !== 'h2') {
+          this[kProtocolProbe] = null
+          this[kDrainQueue](origin, targets.slice(1))
+        }
+      }
     })
 
-    this.on('connectionError', (origin, targets, error) => {
+    this.on('disconnect', (origin, targets) => {
+      if (targets.includes(this[kProtocolProbe])) {
+        this[kProtocolProbe] = null
+        this[kDrainQueue](origin, targets.slice(1))
+      }
+    })
+
+    this.on('connectionError', (origin, targets) => {
+      let resumeQueued = false
+
       // If a connection error occurs, we remove the client from the pool,
       // and emit a connectionError event. They will not be re-used.
       // Fixes https://github.com/nodejs/undici/issues/3895
       for (const target of targets) {
+        if (target === this[kProtocolProbe]) {
+          this[kProtocolProbe] = null
+          resumeQueued = true
+        }
+
         // Do not use kRemoveClient here, as it will close the client,
         // but the client cannot be closed in this state.
         const idx = this[kClients].indexOf(target)
@@ -66427,7 +67152,27 @@ class Pool extends PoolBase {
           this[kClients].splice(idx, 1)
         }
       }
+
+      if (resumeQueued) {
+        this[kDrainQueue](origin, targets.slice(1))
+      }
     })
+  }
+
+  [kOnClientBusy] (client) {
+    if (
+      this[kProtocolProbe] === null &&
+      client[kConnecting] &&
+      shouldCreateProtocolProbe(this, client)
+    ) {
+      this[kProtocolProbe] = client
+    }
+  }
+
+  [kOnClientDrain] (client) {
+    if (client === this[kProtocolProbe]) {
+      this[kProtocolProbe] = null
+    }
   }
 
   [kGetDispatcher] () {
@@ -66444,10 +67189,12 @@ class Pool extends PoolBase {
       }
     }
 
+    if (this[kProtocolProbe] !== null) {
+      return
+    }
+
     if (!this[kConnections] || this[kClients].length < this[kConnections]) {
-      const dispatcher = this[kFactory](this[kUrl], this[kOptions])
-      this[kAddClient](dispatcher)
-      return dispatcher
+      return createClient(this)
     }
   }
 
@@ -66464,9 +67211,12 @@ class Pool extends PoolBase {
       }
     }
 
+    if (this[kProtocolProbe] !== null) {
+      return false
+    }
+
     if (!this[kConnections] || this[kClients].length < this[kConnections]) {
-      const dispatcher = this[kFactory](this[kUrl], this[kOptions])
-      this[kAddClient](dispatcher)
+      createClient(this)
       return true
     }
 
@@ -66810,8 +67560,8 @@ class ProxyAgent extends DispatcherBase {
 }
 
 /**
- * @param {string[] | Record<string, string>} headers
- * @returns {Record<string, string>}
+ * @param {string[] | Record<string, string> | Iterable<[string, string | string[] | undefined]>} headers
+ * @returns {Record<string, string | string[] | undefined>}
  */
 function buildHeaders (headers) {
   // When using undici.fetch, the headers list is stored
@@ -66840,7 +67590,20 @@ function buildHeaders (headers) {
     const headersPair = {}
 
     for (const [key, value] of headers) {
-      headersPair[key] = value
+      if (!Object.hasOwn(headersPair, key)) {
+        headersPair[key] = value
+        continue
+      }
+
+      const previous = headersPair[key]
+      const values = []
+      if (previous !== undefined) {
+        values.push(...(Array.isArray(previous) ? previous : [previous]))
+      }
+      if (value !== undefined) {
+        values.push(...(Array.isArray(value) ? value : [value]))
+      }
+      headersPair[key] = values.length > 1 ? values : values[0]
     }
 
     return headersPair
@@ -68889,8 +69652,11 @@ class DeduplicationHandler {
       return
     }
 
-    this.#completed = true
+    // Remove the entry before callbacks can synchronously dispatch a retry.
+    this.#cleanup()
     this.#primaryHandler.onResponseEnd?.(controller, trailers)
+    // A throwing end callback must still be handled by onResponseError.
+    this.#completed = true
 
     for (const waitingHandler of this.#waitingHandlers) {
       if (waitingHandler.done || waitingHandler.controller.aborted) {
@@ -68905,22 +69671,21 @@ class DeduplicationHandler {
         continue
       }
 
-      if (waitingHandler.controller.paused && waitingHandler.bufferedChunks.length > 0) {
+      if (waitingHandler.controller.paused) {
         waitingHandler.pendingTrailers = trailers
         continue
       }
 
       try {
         waitingHandler.handler.onResponseEnd?.(waitingHandler.controller, trailers)
-      } catch {
-        // Ignore errors from waiting handlers
+      } catch (err) {
+        this.#errorWaitingHandler(waitingHandler, err)
       }
 
       waitingHandler.done = true
     }
 
     this.#pruneDoneWaitingHandlers()
-    this.#onComplete?.()
   }
 
   /**
@@ -68934,6 +69699,7 @@ class DeduplicationHandler {
 
     this.#aborted = true
     this.#completed = true
+    this.#cleanup()
 
     this.#primaryHandler.onResponseError?.(controller, err)
 
@@ -68942,7 +69708,12 @@ class DeduplicationHandler {
     }
 
     this.#waitingHandlers = []
-    this.#onComplete?.()
+  }
+
+  #cleanup () {
+    const onComplete = this.#onComplete
+    this.#onComplete = null
+    onComplete?.()
   }
 
   /**
@@ -68984,8 +69755,8 @@ class DeduplicationHandler {
         ) {
           try {
             waitingHandler.handler.onResponseEnd?.(waitingHandler.controller, waitingHandler.pendingTrailers)
-          } catch {
-            // Ignore errors from waiting handlers
+          } catch (err) {
+            this.#errorWaitingHandler(waitingHandler, err)
           }
 
           waitingHandler.pendingTrailers = null
@@ -69043,7 +69814,7 @@ class DeduplicationHandler {
 
     if (waitingHandler.bufferedBytes > this.#maxBufferSize) {
       const err = new RequestAbortedError(`Deduplicated waiting handler exceeded maxBufferSize (${this.#maxBufferSize} bytes) while paused`)
-      this.#errorWaitingHandler(waitingHandler, err)
+      waitingHandler.controller.abort(err)
     }
   }
 
@@ -69092,8 +69863,13 @@ class DeduplicationHandler {
     waitingHandler.bufferedChunks = []
     waitingHandler.bufferedBytes = 0
 
-    // controller.abort(err) notifies the handler via onResponseError
-    waitingHandler.controller.abort(err)
+    // A response failure is not a consumer abort: retry handlers must be able
+    // to retry it just as they would a failure of the primary request.
+    try {
+      waitingHandler.handler.onResponseError?.(waitingHandler.controller, err)
+    } catch {
+      // Ignore errors from waiting handlers
+    }
   }
 
   #pruneDoneWaitingHandlers () {
@@ -69169,6 +69945,11 @@ class RedirectHandler {
   }
 
   onResponseStart (controller, statusCode, headers, statusMessage) {
+    if (statusCode < 200) {
+      this.handler.onResponseStart?.(controller, statusCode, headers, statusMessage)
+      return
+    }
+
     if (this.opts.throwOnMaxRedirect && this.history.length >= this.maxRedirections) {
       throw new Error('max redirects')
     }
@@ -69405,34 +70186,51 @@ function validatePartialResponseContentLength (headers, range, statusCode, retry
 // so nothing outside the handler can trigger it.
 class RetryController {
   #onAbort
+  #paused = false
+  #target = null
 
   constructor (onAbort) {
     this.#onAbort = onAbort
-    this.target = null
   }
 
-  pause () { this.target?.pause() }
-  resume () { this.target?.resume() }
-
-  abort (reason) {
-    this.target?.abort(reason)
-    this.#onAbort(reason)
-  }
-
-  get paused () { return this.target?.paused ?? false }
-  get aborted () { return this.target?.aborted ?? false }
-  get reason () { return this.target?.reason ?? null }
-  get rawHeaders () { return this.target?.rawHeaders ?? null }
-  set rawHeaders (value) {
-    if (this.target) {
-      this.target.rawHeaders = value
+  set target (target) {
+    this.#target = target
+    if (this.#paused) {
+      target?.pause()
     }
   }
 
-  get rawTrailers () { return this.target?.rawTrailers ?? null }
+  get target () { return this.#target }
+
+  pause () {
+    this.#paused = true
+    this.#target?.pause()
+  }
+
+  resume () {
+    this.#paused = false
+    this.#target?.resume()
+  }
+
+  abort (reason) {
+    this.#target?.abort(reason)
+    this.#onAbort(reason)
+  }
+
+  get paused () { return this.#paused || (this.#target?.paused ?? false) }
+  get aborted () { return this.#target?.aborted ?? false }
+  get reason () { return this.#target?.reason ?? null }
+  get rawHeaders () { return this.#target?.rawHeaders ?? null }
+  set rawHeaders (value) {
+    if (this.#target) {
+      this.#target.rawHeaders = value
+    }
+  }
+
+  get rawTrailers () { return this.#target?.rawTrailers ?? null }
   set rawTrailers (value) {
-    if (this.target) {
-      this.target.rawTrailers = value
+    if (this.#target) {
+      this.#target.rawTrailers = value
     }
   }
 }
@@ -69500,6 +70298,12 @@ class RetryHandler {
     // Backoff timer returned by the retry policy, so #onAbort can cancel it.
     // Null for custom policies that do not return their timer.
     this.retryTimer = null
+    // A response can complete while its controller is paused if the peer closes
+    // the connection. Hold its body until the retry policy decides whether to
+    // discard it for a retry or forward it as the final response.
+    this.pendingResponseData = null
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     // Set once an abort during the backoff delivered the terminal error
     // downstream; late policy callbacks and connection errors are then moot.
     this.aborted = false
@@ -69541,6 +70345,13 @@ class RetryHandler {
       this.retryPending = false
       this.retryTimer = null
 
+      const pendingData = this.pendingResponseData
+      const pendingTrailers = this.pendingResponseTrailers
+      const pendingEnd = this.pendingResponseEnded
+      this.pendingResponseData = null
+      this.pendingResponseTrailers = null
+      this.pendingResponseEnded = false
+
       if (passedErr) {
         if (this.headersSent) {
           // The downstream handler already received the response from an
@@ -69551,6 +70362,15 @@ class RetryHandler {
           this.headersSent = true
           this.checkpointResponseEnd(headers)
           this.handler.onResponseStart?.(this.controllerProxy, statusCode, headers, statusMessage)
+          controller.resume()
+
+          if (pendingEnd) {
+            for (const chunk of pendingData) {
+              this.onResponseData(controller, chunk)
+            }
+            this.onResponseEnd(controller, pendingTrailers)
+          }
+          return
         }
         controller.resume()
         return
@@ -69558,6 +70378,9 @@ class RetryHandler {
 
       this.error = err
       controller.resume()
+      if (pendingEnd) {
+        this.onResponseEnd(controller, pendingTrailers)
+      }
     }
 
     // The pause()/resume() pair (here and in shouldRetry) acts on THIS
@@ -69571,6 +70394,9 @@ class RetryHandler {
     // The default policy returns its backoff timer so an abort can cancel it;
     // a custom policy may return anything (or nothing), which is ignored.
     this.retryPending = true
+    this.pendingResponseData = []
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     this.retryTimer = this.retryOpts.retry(
       err,
       {
@@ -69822,6 +70648,11 @@ class RetryHandler {
   }
 
   onResponseData (_controller, chunk) {
+    if (this.pendingResponseData !== null) {
+      this.pendingResponseData.push(chunk)
+      return
+    }
+
     if (this.error) {
       return
     }
@@ -69832,6 +70663,12 @@ class RetryHandler {
   }
 
   onResponseEnd (_controller, trailers) {
+    if (this.pendingResponseData !== null) {
+      this.pendingResponseTrailers = trailers
+      this.pendingResponseEnded = true
+      return
+    }
+
     if (this.error && this.retryOpts.throwOnError) {
       throw this.error
     }
@@ -69945,6 +70782,9 @@ class RetryHandler {
     this.retryPending = false
     clearTimeout(this.retryTimer)
     this.retryTimer = null
+    this.pendingResponseData = null
+    this.pendingResponseTrailers = null
+    this.pendingResponseEnded = false
     this.handler.onResponseError?.(this.controllerProxy, reason ?? new RequestAbortedError())
   }
 }
@@ -70290,6 +71130,8 @@ function sendCachedValue (handler, opts, result, age, context, isStale) {
   assert(!stream.destroyed, 'stream should not be destroyed')
   assert(!stream.readableDidRead, 'stream should not be readableDidRead')
 
+  let aborted = false
+
   const controller = {
     rawHeaders: [],
     rawTrailers: [],
@@ -70303,12 +71145,13 @@ function sendCachedValue (handler, opts, result, age, context, isStale) {
       return stream.isPaused()
     },
     get aborted () {
-      return stream.destroyed
+      return aborted
     },
     get reason () {
       return stream.errored
     },
     abort (reason) {
+      aborted = true
       stream.destroy(reason ?? new AbortError())
     }
   }
@@ -70648,8 +71491,63 @@ const DecoratorHandler = __nccwpck_require2_(8155)
 /** @typedef {import('node:stream').Transform} Controller */
 /** @typedef {Transform&import('node:zlib').Zlib} DecompressorStream */
 
+class DecompressController {
+  #onPause
+  #onResume
+  #onAbort
+  #paused = false
+
+  constructor (onPause, onResume, onAbort) {
+    this.#onPause = onPause
+    this.#onResume = onResume
+    this.#onAbort = onAbort
+    this.target = null
+  }
+
+  pause () {
+    if (this.#paused) {
+      return
+    }
+
+    this.#paused = true
+    this.#onPause()
+  }
+
+  resume () {
+    if (!this.#paused) {
+      return
+    }
+
+    this.#paused = false
+    this.#onResume()
+  }
+
+  abort (reason) {
+    this.target?.abort(reason)
+    this.#onAbort(reason)
+  }
+
+  get paused () { return this.#paused }
+  get aborted () { return this.target?.aborted ?? false }
+  get reason () { return this.target?.reason ?? null }
+  get rawHeaders () { return this.target?.rawHeaders ?? null }
+  set rawHeaders (value) {
+    if (this.target) {
+      this.target.rawHeaders = value
+    }
+  }
+
+  get rawTrailers () { return this.target?.rawTrailers ?? null }
+  set rawTrailers (value) {
+    if (this.target) {
+      this.target.rawTrailers = value
+    }
+  }
+}
+
 /** @type {Record<string, () => DecompressorStream>} */
 const supportedEncodings = {
+  __proto__: null,
   gzip: createGunzip,
   'x-gzip': createGunzip,
   br: createBrotliDecompress,
@@ -70660,7 +71558,7 @@ const supportedEncodings = {
 }
 
 const defaultSkipStatusCodes = /** @type {const} */ ([204, 304])
-const defaultMaxSize = 64 * 1024 * 1024
+const defaultMaxSize = 0
 
 /**
  * Limits the output of one stage in a decompression chain.
@@ -70692,7 +71590,7 @@ let warningEmitted = /** @type {boolean} */ (false)
  * @typedef {Object} DecompressHandlerOptions
  * @property {number[]|Readonly<number[]>} [skipStatusCodes=[204, 304]] - List of status codes to skip decompression for
  * @property {boolean} [skipErrorResponses] - Whether to skip decompression for error responses (status codes >= 400)
- * @property {number} [maxSize=67108864] - Maximum decompressed response size in bytes
+ * @property {number} [maxSize=0] - Maximum decompressed response size in bytes. 0 disables the limit
  */
 
 class DecompressHandler extends DecoratorHandler {
@@ -70712,16 +71610,130 @@ class DecompressHandler extends DecoratorHandler {
   #terminated = false
   /** @type {boolean} */
   #inputEnded = false
+  /** @type {boolean} */
+  #inputBackpressured = false
+  /** @type {boolean} */
+  #upstreamPaused = false
+  /** @type {boolean} */
+  #draining = false
+  /** @type {boolean} */
+  #drainRequested = false
+  /** @type {boolean} */
+  #completionPending = false
+  /** @type {DecompressorStream | undefined} */
+  #finalDecompressor
+  /** @type {DecompressController} */
+  #controller
 
   constructor (handler, { skipStatusCodes = defaultSkipStatusCodes, skipErrorResponses = true, maxSize = defaultMaxSize } = {}) {
-    if (!Number.isSafeInteger(maxSize) || maxSize < 1) {
-      throw new InvalidArgumentError('maxSize must be a positive integer')
+    if (!Number.isSafeInteger(maxSize) || maxSize < 0) {
+      throw new InvalidArgumentError('maxSize must be a non-negative integer')
     }
 
     super(handler)
     this.#skipStatusCodes = skipStatusCodes
     this.#skipErrorResponses = skipErrorResponses
     this.#maxSize = maxSize
+    this.#controller = new DecompressController(
+      () => this.#onDownstreamPause(),
+      () => this.#onDownstreamResume(),
+      reason => {
+        if (this.#inputEnded && !this.#terminated) {
+          this.onResponseError(this.#controller, reason)
+        }
+      }
+    )
+  }
+
+  #onDownstreamPause () {
+    this.#pauseUpstream()
+  }
+
+  #onDownstreamResume () {
+    const drainWasDeferred = this.#draining
+    this.#drainOutput()
+    if (!drainWasDeferred) {
+      this.#resumeUpstreamIfNeeded()
+      this.#finishIfReady()
+    }
+  }
+
+  #pauseUpstream () {
+    if (!this.#upstreamPaused && !this.#terminated) {
+      this.#upstreamPaused = true
+      this.#controller.target?.pause()
+    }
+  }
+
+  #resumeUpstreamIfNeeded () {
+    if (this.#upstreamPaused && !this.#controller.paused && !this.#inputBackpressured) {
+      this.#upstreamPaused = false
+      if (!this.#inputEnded) {
+        this.#controller.target?.resume()
+      }
+    }
+  }
+
+  #drainOutput () {
+    if (this.#terminated || this.#controller.paused || !this.#finalDecompressor) {
+      return
+    }
+
+    if (this.#draining) {
+      this.#drainRequested = true
+      return
+    }
+
+    this.#draining = true
+    try {
+      do {
+        this.#drainRequested = false
+        let chunk
+        while (!this.#terminated && !this.#controller.paused && (chunk = this.#finalDecompressor.read()) !== null) {
+          if (this.#maxSize > 0) {
+            const decompressedSize = this.#decompressedSize + chunk.length
+            if (decompressedSize > this.#maxSize) {
+              this.#fail(new ResponseExceededMaxSizeError(
+                `Decompressed response size (${decompressedSize}) exceeded maxSize (${this.#maxSize})`
+              ))
+              return
+            }
+
+            this.#decompressedSize = decompressedSize
+          }
+
+          const result = super.onResponseData(this.#controller, chunk)
+          if (result === false && !this.#controller.paused) {
+            this.#controller.pause()
+          }
+        }
+      } while (this.#drainRequested && !this.#terminated && !this.#controller.paused)
+    } finally {
+      this.#draining = false
+    }
+
+    this.#resumeUpstreamIfNeeded()
+    this.#finishIfReady()
+  }
+
+  #finishIfReady () {
+    if (this.#terminated || !this.#completionPending || this.#controller.paused || this.#draining) {
+      return
+    }
+
+    this.#terminated = true
+    this.#cleanupDecompressors()
+    super.onResponseEnd(this.#controller, this.#trailers)
+  }
+
+  #onDecompressionEnd () {
+    if (this.#terminated) {
+      return
+    }
+
+    this.#completionPending = true
+    this.#drainOutput()
+    this.#finishIfReady()
   }
 
   /**
@@ -70777,7 +71789,7 @@ class DecompressHandler extends DecoratorHandler {
     const streams = []
     for (let i = 0; i < decompressors.length; i++) {
       streams.push(decompressors[i])
-      if (i < decompressors.length - 1) {
+      if (i < decompressors.length - 1 && this.#maxSize > 0) {
         streams.push(createMaxSizeLimiter(this.#maxSize))
       }
     }
@@ -70787,11 +71799,10 @@ class DecompressHandler extends DecoratorHandler {
 
   /**
    * Stops decompression and reports an error.
-   * @param {Controller} controller - The controller to coordinate with
    * @param {Error} error - The decompression error
    * @returns {void}
    */
-  #fail (controller, error) {
+  #fail (error) {
     if (this.#terminated) {
       return
     }
@@ -70799,75 +71810,41 @@ class DecompressHandler extends DecoratorHandler {
     if (this.#inputEnded) {
       // The request is already marked complete once the compressed input ends,
       // so controller.abort() can no longer propagate decoder flush errors.
-      this.onResponseError(controller, error)
+      this.onResponseError(this.#controller, error)
     } else {
-      controller.abort(error)
+      this.#controller.abort(error)
     }
   }
 
   /**
-   * Sets up event handlers for a decompressor stream using readable events
+   * Sets up event handlers for the final decompressor stream.
    * @param {DecompressorStream} decompressor - The decompressor stream
-   * @param {Controller} controller - The controller to coordinate with
    * @returns {void}
    */
-  #setupDecompressorEvents (decompressor, controller) {
-    decompressor.on('readable', () => {
-      if (this.#terminated) {
-        return
-      }
-
-      let chunk
-      while ((chunk = decompressor.read()) !== null) {
-        const decompressedSize = this.#decompressedSize + chunk.length
-        if (decompressedSize > this.#maxSize) {
-          this.#fail(controller, new ResponseExceededMaxSizeError(
-            `Decompressed response size (${decompressedSize}) exceeded maxSize (${this.#maxSize})`
-          ))
-          return
-        }
-
-        this.#decompressedSize = decompressedSize
-        const result = super.onResponseData(controller, chunk)
-        if (result === false) {
-          break
-        }
-      }
-    })
-
-    decompressor.on('error', (error) => {
-      this.#fail(controller, error)
-    })
+  #setupDecompressorEvents (decompressor) {
+    this.#finalDecompressor = decompressor
+    decompressor.on('readable', () => this.#drainOutput())
+    decompressor.on('error', (error) => this.#fail(error))
   }
 
   /**
    * Sets up event handling for a single decompressor
-   * @param {Controller} controller - The controller to handle events
    * @returns {void}
    */
-  #setupSingleDecompressor (controller) {
+  #setupSingleDecompressor () {
     const decompressor = this.#decompressors[0]
-    this.#setupDecompressorEvents(decompressor, controller)
+    this.#setupDecompressorEvents(decompressor)
 
-    decompressor.on('end', () => {
-      if (this.#terminated) {
-        return
-      }
-
-      this.#terminated = true
-      this.#cleanupDecompressors()
-      super.onResponseEnd(controller, this.#trailers)
-    })
+    decompressor.on('end', () => this.#onDecompressionEnd())
   }
 
   /**
    * Sets up event handling for multiple chained decompressors using pipeline
-   * @param {Controller} controller - The controller to handle events
    * @returns {void}
    */
-  #setupMultipleDecompressors (controller) {
+  #setupMultipleDecompressors () {
     const lastDecompressor = this.#decompressors[this.#decompressors.length - 1]
-    this.#setupDecompressorEvents(lastDecompressor, controller)
+    this.#setupDecompressorEvents(lastDecompressor)
 
     pipeline(this.#decompressors, (err) => {
       if (this.#terminated) {
@@ -70875,13 +71852,26 @@ class DecompressHandler extends DecoratorHandler {
       }
 
       if (err) {
-        this.#fail(controller, err)
+        this.#fail(err)
         return
       }
 
-      this.#terminated = true
-      this.#cleanupDecompressors()
-      super.onResponseEnd(controller, this.#trailers)
+      this.#onDecompressionEnd()
+    })
+  }
+
+  #setupInputBackpressure () {
+    const decompressor = this.#decompressors[0]
+    decompressor.on('drain', () => {
+      if (this.#terminated) {
+        return
+      }
+
+      this.#inputBackpressured = false
+      if (!this.#controller.paused) {
+        this.#drainOutput()
+        this.#resumeUpstreamIfNeeded()
+      }
     })
   }
 
@@ -70891,6 +71881,16 @@ class DecompressHandler extends DecoratorHandler {
    */
   #cleanupDecompressors () {
     this.#decompressors.length = 0
+    this.#finalDecompressor = undefined
+  }
+
+  onRequestStart (controller, context) {
+    this.#controller.target = controller
+    return super.onRequestStart(this.#controller, context)
+  }
+
+  onRequestUpgrade (controller, statusCode, headers, socket) {
+    return super.onRequestUpgrade(this.#controller, statusCode, headers, socket)
   }
 
   /**
@@ -70901,18 +71901,24 @@ class DecompressHandler extends DecoratorHandler {
    * @returns {void}
    */
   onResponseStart (controller, statusCode, headers, statusMessage) {
-    const contentEncoding = headers['content-encoding']
+    // Repeated field lines reach us as an array. RFC 9110 section 5.3 lets a
+    // recipient join them with commas, which yields the single-line form the
+    // decompression chain already handles.
+    const rawContentEncoding = headers['content-encoding']
+    const contentEncoding = Array.isArray(rawContentEncoding)
+      ? rawContentEncoding.join(',')
+      : rawContentEncoding
 
     // If content encoding is not supported or status code is in skip list
     if (this.#shouldSkipDecompression(contentEncoding, statusCode)) {
-      return super.onResponseStart(controller, statusCode, headers, statusMessage)
+      return super.onResponseStart(this.#controller, statusCode, headers, statusMessage)
     }
 
     const decompressors = this.#createDecompressionChain(contentEncoding.toLowerCase())
 
     if (decompressors.length === 0) {
       this.#cleanupDecompressors()
-      return super.onResponseStart(controller, statusCode, headers, statusMessage)
+      return super.onResponseStart(this.#controller, statusCode, headers, statusMessage)
     }
 
     this.#decompressors = decompressors
@@ -70920,8 +71926,8 @@ class DecompressHandler extends DecoratorHandler {
     // Remove compression headers since we're decompressing
     const { 'content-encoding': _, 'content-length': __, ...newHeaders } = headers
 
-    if (controller?.rawHeaders) {
-      const rawHeaders = controller.rawHeaders
+    if (this.#controller.rawHeaders) {
+      const rawHeaders = this.#controller.rawHeaders
 
       if (Array.isArray(rawHeaders)) {
         const filteredHeaders = []
@@ -70947,13 +71953,14 @@ class DecompressHandler extends DecoratorHandler {
       }
     }
 
+    this.#setupInputBackpressure()
     if (this.#decompressors.length === 1) {
-      this.#setupSingleDecompressor(controller)
+      this.#setupSingleDecompressor()
     } else {
-      this.#setupMultipleDecompressors(controller)
+      this.#setupMultipleDecompressors()
     }
 
-    return super.onResponseStart(controller, statusCode, newHeaders, statusMessage)
+    return super.onResponseStart(this.#controller, statusCode, newHeaders, statusMessage)
   }
 
   /**
@@ -70963,10 +71970,13 @@ class DecompressHandler extends DecoratorHandler {
    */
   onResponseData (controller, chunk) {
     if (this.#decompressors.length > 0) {
-      this.#decompressors[0].write(chunk)
+      if (!this.#decompressors[0].write(chunk)) {
+        this.#inputBackpressured = true
+        this.#pauseUpstream()
+      }
       return
     }
-    super.onResponseData(controller, chunk)
+    return super.onResponseData(this.#controller, chunk)
   }
 
   /**
@@ -70981,7 +71991,7 @@ class DecompressHandler extends DecoratorHandler {
       this.#decompressors[0].end()
       return
     }
-    super.onResponseEnd(controller, trailers)
+    return super.onResponseEnd(this.#controller, trailers)
   }
 
   /**
@@ -70999,7 +72009,7 @@ class DecompressHandler extends DecoratorHandler {
       decompressor.destroy()
     }
     this.#cleanupDecompressors()
-    super.onResponseError(controller, err)
+    super.onResponseError(this.#controller, err)
   }
 }
 
@@ -77616,7 +78626,7 @@ class Cache {
   }
 
   async match (request, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.match'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -77634,7 +78644,7 @@ class Cache {
   }
 
   async matchAll (request = undefined, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.matchAll'
     if (request !== undefined) request = webidl.converters.RequestInfo(request)
@@ -77644,7 +78654,7 @@ class Cache {
   }
 
   async add (request) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.add'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -77662,7 +78672,7 @@ class Cache {
   }
 
   async addAll (requests) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.addAll'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -77760,7 +78770,10 @@ class Cache {
             }
           }
         },
-        processResponseEndOfBody (response) {
+        // Possible spec bug. If the body is never read, `processResponseEndOfBody` (which is attached to a TransformStream's flush hook)
+        // never runs, so this would hang. This hook, on the other hand, always reads the body.
+        // https://github.com/nodejs/undici/issues/5615
+        processResponseConsumeBody (response) {
           // 1.
           if (response.aborted) {
             responsePromise.reject(new DOMException('aborted', 'AbortError'))
@@ -77832,7 +78845,7 @@ class Cache {
   }
 
   async put (request, response) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.put'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -77963,7 +78976,7 @@ class Cache {
   }
 
   async delete (request, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -78029,7 +79042,7 @@ class Cache {
    * @returns {Promise<readonly Request[]>}
    */
   async keys (request = undefined, options = {}) {
-    webidl.brandCheck(this, Cache)
+    webidl.brandCheck(this, webidl.is.Cache)
 
     const prefix = 'Cache.keys'
 
@@ -78379,6 +79392,12 @@ class Cache {
     // 6.
     return Object.freeze(responseList)
   }
+
+  static {
+    webidl.is.Cache = (arg) => {
+      return arg != null && typeof arg === 'object' && #relevantRequestResponseList in arg
+    }
+  }
 }
 
 Object.defineProperties(Cache.prototype, {
@@ -78466,7 +79485,7 @@ class CacheStorage {
   }
 
   async match (request, options = {}) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
     webidl.argumentLengthCheck(arguments, 1, 'CacheStorage.match')
 
     request = webidl.converters.RequestInfo(request)
@@ -78503,7 +79522,7 @@ class CacheStorage {
    * @returns {Promise<boolean>}
    */
   async has (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.has'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -78521,7 +79540,7 @@ class CacheStorage {
    * @returns {Promise<Cache>}
    */
   async open (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.open'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -78555,7 +79574,7 @@ class CacheStorage {
    * @returns {Promise<boolean>}
    */
   async delete (cacheName) {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     const prefix = 'CacheStorage.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -78570,13 +79589,19 @@ class CacheStorage {
    * @returns {Promise<string[]>}
    */
   async keys () {
-    webidl.brandCheck(this, CacheStorage)
+    webidl.brandCheck(this, webidl.is.CacheStorage)
 
     // 2.1
     const keys = this.#caches.keys()
 
     // 2.2
     return [...keys]
+  }
+
+  static {
+    webidl.is.CacheStorage = (arg) => {
+      return arg != null && typeof arg === 'object' && #caches in arg
+    }
   }
 }
 
@@ -78681,9 +79706,19 @@ module.exports = {
 const { parseSetCookie } = __nccwpck_require2_(1978)
 const { stringify } = __nccwpck_require2_(7797)
 const { webidl } = __nccwpck_require2_(7879)
-const { Headers } = __nccwpck_require2_(660)
 
-const brandChecks = webidl.brandCheckMultiple([Headers, globalThis.Headers].filter(Boolean))
+const globalHeadersBrandCheck = (arg) => webidl.brandCheck(arg, webidl.util.MakeTypeAssertion(globalThis.Headers))
+const undiciHeadersBrandCheck = (arg) => webidl.brandCheck(arg, webidl.is.Headers)
+
+function brandCheckHeaders (arg) {
+  try {
+    undiciHeadersBrandCheck(arg)
+    return
+  } catch {
+  }
+
+  globalHeadersBrandCheck(arg)
+}
 
 /**
  * @typedef {Object} Cookie
@@ -78706,12 +79741,14 @@ const brandChecks = webidl.brandCheckMultiple([Headers, globalThis.Headers].filt
 function getCookies (headers) {
   webidl.argumentLengthCheck(arguments, 1, 'getCookies')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const cookie = headers.get('cookie')
 
+  // A null prototype keeps a cookie named `__proto__` from hitting the
+  // Object.prototype setter, which would silently drop it.
   /** @type {Record<string, string>} */
-  const out = {}
+  const out = { __proto__: null }
 
   if (!cookie) {
     return out
@@ -78733,7 +79770,7 @@ function getCookies (headers) {
  * @returns {void}
  */
 function deleteCookie (headers, name, attributes) {
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const prefix = 'deleteCookie'
   webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -78758,7 +79795,7 @@ function deleteCookie (headers, name, attributes) {
 function getSetCookies (headers) {
   webidl.argumentLengthCheck(arguments, 1, 'getSetCookies')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   const cookies = headers.getSetCookie()
 
@@ -78787,7 +79824,7 @@ function parseCookie (cookie) {
 function setCookie (headers, cookie) {
   webidl.argumentLengthCheck(arguments, 2, 'setCookie')
 
-  brandChecks(headers)
+  brandCheckHeaders(headers)
 
   cookie = webidl.converters.Cookie(cookie)
 
@@ -79526,7 +80563,9 @@ function stringify (cookie) {
     out.push(`Path=${cookie.path}`)
   }
 
-  if (cookie.expires && cookie.expires.toString() !== 'Invalid Date') {
+  // A numeric 0 is the Unix epoch, not an absent value -- the same reason the
+  // Max-Age check above tests the type rather than truthiness.
+  if (cookie.expires != null && cookie.expires.toString() !== 'Invalid Date') {
     out.push(`Expires=${toIMFDate(cookie.expires)}`)
   }
 
@@ -80291,6 +81330,8 @@ class EventSource extends EventTarget {
    * @readonly
    */
   get readyState () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#readyState
   }
 
@@ -80300,6 +81341,8 @@ class EventSource extends EventTarget {
    * @returns {string}
    */
   get url () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#url
   }
 
@@ -80308,6 +81351,8 @@ class EventSource extends EventTarget {
    * instantiated with CORS credentials set (true), or not (false, the default).
    */
   get withCredentials () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#withCredentials
   }
 
@@ -80463,7 +81508,7 @@ class EventSource extends EventTarget {
    * CLOSED.
    */
   close () {
-    webidl.brandCheck(this, EventSource)
+    webidl.brandCheck(this, webidl.is.EventSource)
 
     if (this.#readyState === CLOSED) return
     this.#readyState = CLOSED
@@ -80472,10 +81517,14 @@ class EventSource extends EventTarget {
   }
 
   get onopen () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.open
   }
 
   set onopen (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.open) {
       this.removeEventListener('open', this.#events.open)
     }
@@ -80491,10 +81540,14 @@ class EventSource extends EventTarget {
   }
 
   get onmessage () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.message
   }
 
   set onmessage (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.message) {
       this.removeEventListener('message', this.#events.message)
     }
@@ -80510,10 +81563,14 @@ class EventSource extends EventTarget {
   }
 
   get onerror () {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     return this.#events.error
   }
 
   set onerror (fn) {
+    webidl.brandCheck(this, webidl.is.EventSource)
+
     if (this.#events.error) {
       this.removeEventListener('error', this.#events.error)
     }
@@ -80525,6 +81582,12 @@ class EventSource extends EventTarget {
       this.#events.error = fn
     } else {
       this.#events.error = null
+    }
+  }
+
+  static {
+    webidl.is.EventSource = (arg) => {
+      return arg != null && typeof arg === 'object' && #events in arg
     }
   }
 }
@@ -80678,7 +81741,6 @@ module.exports = {
 
 const util = __nccwpck_require2_(3440)
 const {
-  ReadableStreamFrom,
   readableStreamClose,
   fullyReadBody,
   extractMimeType
@@ -80873,8 +81935,16 @@ function extractBody (object, keepalive = false) {
       )
     }
 
-    stream =
-      webidl.is.ReadableStream(object) ? object : ReadableStreamFrom(object)
+    stream = webidl.is.ReadableStream(object)
+      ? object
+      : ReadableStream.from(object).pipeThrough(new TransformStream({
+        transform (chunk, controller) {
+          const bytes = isUint8Array(chunk) ? chunk : Buffer.from(chunk)
+          if (bytes.byteLength) {
+            controller.enqueue(bytes)
+          }
+        }
+      }))
   }
 
   // 11. If source is a byte sequence, then set action to a
@@ -80969,7 +82039,7 @@ function cloneBody (body) {
   }
 }
 
-function bodyMixinMethods (instance, getInternalState) {
+function bodyMixinMethods (brandCheck, getInternalState) {
   const methods = {
     blob () {
       // The blob() method steps are to return the result of
@@ -80989,7 +82059,7 @@ function bodyMixinMethods (instance, getInternalState) {
         // Return a Blob whose contents are bytes and type attribute
         // is mimeType.
         return new Blob([bytes], { type: mimeType })
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     arrayBuffer () {
@@ -80999,19 +82069,19 @@ function bodyMixinMethods (instance, getInternalState) {
       // whose contents are bytes.
       return consumeBody(this, (bytes) => {
         return new Uint8Array(bytes).buffer
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     text () {
       // The text() method steps are to return the result of running
       // consume body with this and UTF-8 decode.
-      return consumeBody(this, utf8DecodeBytes, instance, getInternalState)
+      return consumeBody(this, utf8DecodeBytes, brandCheck, getInternalState)
     },
 
     json () {
       // The json() method steps are to return the result of running
       // consume body with this and parse JSON from bytes.
-      return consumeBody(this, parseJSONFromBytes, instance, getInternalState)
+      return consumeBody(this, parseJSONFromBytes, brandCheck, getInternalState)
     },
 
     formData () {
@@ -81059,7 +82129,7 @@ function bodyMixinMethods (instance, getInternalState) {
         throw new TypeError(
           'Content-Type was not one of "multipart/form-data" or "application/x-www-form-urlencoded".'
         )
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     bytes () {
@@ -81068,7 +82138,7 @@ function bodyMixinMethods (instance, getInternalState) {
       // result of creating a Uint8Array from bytes in this’s relevant realm.
       return consumeBody(this, (bytes) => {
         return new Uint8Array(bytes)
-      }, instance, getInternalState)
+      }, brandCheck, getInternalState)
     },
 
     textStream () {
@@ -81118,20 +82188,20 @@ function bodyMixinMethods (instance, getInternalState) {
   return methods
 }
 
-function mixinBody (prototype, getInternalState) {
-  Object.assign(prototype.prototype, bodyMixinMethods(prototype, getInternalState))
+function mixinBody (prototype, getInternalState, brandCheck) {
+  Object.assign(prototype.prototype, bodyMixinMethods(brandCheck, getInternalState))
 }
 
 /**
  * @see https://fetch.spec.whatwg.org/#concept-body-consume-body
  * @param {any} object internal state
  * @param {(value: unknown) => unknown} convertBytesToJSValue
- * @param {any} instance
+ * @param {import('../../../types/webidl').WebidlIsFunction} brandCheck
  * @param {(target: any) => any} getInternalState
  */
-function consumeBody (object, convertBytesToJSValue, instance, getInternalState) {
+function consumeBody (object, convertBytesToJSValue, brandCheck, getInternalState) {
   try {
-    webidl.brandCheck(object, instance)
+    webidl.brandCheck(object, brandCheck)
   } catch (e) {
     return Promise.reject(e)
   }
@@ -81371,14 +82441,14 @@ module.exports = {
 
 
 const assert = __nccwpck_require2_(4589)
-const { forgivingBase64, collectASequenceOfCodePoints, collectASequenceOfCodePointsFast, isomorphicDecode, removeASCIIWhitespace, removeChars } = __nccwpck_require2_(8116)
+const { asciiLowercase, forgivingBase64, collectASequenceOfCodePoints, collectASequenceOfCodePointsFast, isomorphicDecode, removeASCIIWhitespace, removeChars } = __nccwpck_require2_(8116)
 
 const encoder = new TextEncoder()
 
 /**
  * @see https://mimesniff.spec.whatwg.org/#http-token-code-point
  */
-const HTTP_TOKEN_CODEPOINTS = /^[-!#$%&'*+.^_|~A-Za-z0-9]+$/u
+const HTTP_TOKEN_CODEPOINTS = /^[-!#$%&'*+.^_`|~A-Za-z0-9]+$/u
 const HTTP_WHITESPACE_REGEX = /[\u000A\u000D\u0009\u0020]/u // eslint-disable-line
 
 /**
@@ -81439,7 +82509,7 @@ function dataURLProcessor (dataURL) {
   // 11. If mimeType ends with U+003B (;), followed by
   // zero or more U+0020 SPACE, followed by an ASCII
   // case-insensitive match for "base64", then:
-  if (/;(?:\u0020*)base64$/ui.test(mimeType)) {
+  if (/;\u0020*[Bb][Aa][Ss][Ee]64$/u.test(mimeType)) {
     // 1. Let stringBody be the isomorphic decode of body.
     const stringBody = isomorphicDecode(body)
 
@@ -81638,8 +82708,8 @@ function parseMIMEType (input) {
     return 'failure'
   }
 
-  const typeLowercase = type.toLowerCase()
-  const subtypeLowercase = subtype.toLowerCase()
+  const typeLowercase = asciiLowercase(type)
+  const subtypeLowercase = asciiLowercase(subtype)
 
   // 10. Let mimeType be a new MIME type record whose type
   // is type, in ASCII lowercase, and subtype is subtype,
@@ -81679,7 +82749,7 @@ function parseMIMEType (input) {
 
     // 4. Set parameterName to parameterName, in ASCII
     // lowercase.
-    parameterName = parameterName.toLowerCase()
+    parameterName = asciiLowercase(parameterName)
 
     // 5. If position is not past the end of input, then:
     if (position.position < input.length) {
@@ -82578,6 +83648,8 @@ const random = runtimeFeatures.has('crypto')
   ? (__nccwpck_require2_(7598).randomInt)
   : (max) => Math.floor(Math.random() * max)
 
+let getFormDataState, setFormDataState, getFormDataBoundary
+
 // https://xhr.spec.whatwg.org/#formdata
 class FormData {
   #state = []
@@ -82596,7 +83668,7 @@ class FormData {
   }
 
   append (name, value, filename = undefined) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.append'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -82624,7 +83696,7 @@ class FormData {
   }
 
   delete (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.delete'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -82637,7 +83709,7 @@ class FormData {
   }
 
   get (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.get'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -82657,7 +83729,7 @@ class FormData {
   }
 
   getAll (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.getAll'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -82674,7 +83746,7 @@ class FormData {
   }
 
   has (name) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.has'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -82687,7 +83759,7 @@ class FormData {
   }
 
   set (name, value, filename = undefined) {
-    webidl.brandCheck(this, FormData)
+    webidl.brandCheck(this, webidl.is.FormData)
 
     const prefix = 'FormData.set'
     webidl.argumentLengthCheck(arguments, 2, prefix)
@@ -82752,40 +83824,34 @@ class FormData {
     return `FormData ${output.slice(output.indexOf(']') + 2)}`
   }
 
-  /**
-   * @param {FormData} formData
-   */
-  static getFormDataState (formData) {
-    return formData.#state
-  }
+  static {
+    /** @param {FormData} formData  */
+    getFormDataState = (formData) => formData.#state
 
-  /**
-   * @param {FormData} formData
-   * @param {any[]} newState
-   */
-  static setFormDataState (formData, newState) {
-    formData.#state = newState
-  }
+    /**
+     * @param {FormData} formData
+     * @param {any[]} newState
+     */
+    setFormDataState = (formData, newState) => {
+      formData.#state = newState
+    }
 
-  /**
-   * @param {FormData} formData
-   * @returns {string | null}
-   */
-  static getFormDataBoundary (formData) {
-    const boundary = formData.#boundary
-    if (boundary != null) return boundary
+    /**
+     * @param {FormData} formData
+     * @returns {string | null}
+     */
+    getFormDataBoundary = (formData) => {
+      // eslint-disable-next-line no-return-assign
+      return formData.#boundary ??= `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
+    }
 
-    // eslint-disable-next-line no-return-assign
-    return formData.#boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
+    webidl.is.FormData = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { getFormDataState, setFormDataState, getFormDataBoundary } = FormData
-Reflect.deleteProperty(FormData, 'getFormDataState')
-Reflect.deleteProperty(FormData, 'setFormDataState')
-Reflect.deleteProperty(FormData, 'getFormDataBoundary')
-
-iteratorMixin('FormData', FormData, getFormDataState, 'name', 'value')
+iteratorMixin('FormData', FormData, getFormDataState, 'name', 'value', webidl.is.FormData)
 
 Object.defineProperties(FormData.prototype, {
   append: kEnumerableProperty,
@@ -82840,8 +83906,6 @@ function makeEntry (name, value, filename) {
   // 4. Return an entry whose name is name and whose value is value.
   return { name, value }
 }
-
-webidl.is.FormData = webidl.util.MakeTypeAssertion(FormData)
 
 module.exports = { FormData, makeEntry, setFormDataState, getFormDataBoundary }
 
@@ -83325,6 +84389,8 @@ class HeadersList {
   }
 }
 
+let getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList
+
 // https://fetch.spec.whatwg.org/#headers-class
 class Headers {
   #guard
@@ -83360,7 +84426,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-append
   append (name, value) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 2, 'Headers.append')
 
@@ -83373,7 +84439,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-delete
   delete (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.delete')
 
@@ -83417,7 +84483,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-get
   get (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.get')
 
@@ -83440,7 +84506,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-has
   has (name) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 1, 'Headers.has')
 
@@ -83463,7 +84529,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-set
   set (name, value) {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     webidl.argumentLengthCheck(arguments, 2, 'Headers.set')
 
@@ -83511,7 +84577,7 @@ class Headers {
 
   // https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
   getSetCookie () {
-    webidl.brandCheck(this, Headers)
+    webidl.brandCheck(this, webidl.is.Headers)
 
     // 1. If this’s header list does not contain `Set-Cookie`, then return « ».
     // 2. Return the values of all headers in this’s header list whose name is
@@ -83532,37 +84598,38 @@ class Headers {
     return `Headers ${util.formatWithOptions(options, this.#headersList.entries)}`
   }
 
-  static getHeadersGuard (o) {
-    return o.#guard
-  }
+  static {
+    /** @param {Headers} headers */
+    getHeadersGuard = (headers) => headers.#guard
 
-  static setHeadersGuard (o, guard) {
-    o.#guard = guard
-  }
+    /**
+     * @param {Headers} headers
+     * @param {string} guard
+     */
+    setHeadersGuard = (headers, guard) => {
+      headers.#guard = guard
+    }
 
-  /**
-   * @param {Headers} o
-   */
-  static getHeadersList (o) {
-    return o.#headersList
-  }
+    /**
+     * @param {Headers} headers
+     */
+    getHeadersList = (headers) => headers.#headersList
 
-  /**
-   * @param {Headers} target
-   * @param {HeadersList} list
-   */
-  static setHeadersList (target, list) {
-    target.#headersList = list
+    /**
+     * @param {Headers} target
+     * @param {HeadersList} list
+     */
+    setHeadersList = (target, list) => {
+      target.#headersList = list
+    }
+
+    webidl.is.Headers = (arg) => {
+      return arg != null && typeof arg === 'object' && #guard in arg
+    }
   }
 }
 
-const { getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList } = Headers
-Reflect.deleteProperty(Headers, 'getHeadersGuard')
-Reflect.deleteProperty(Headers, 'setHeadersGuard')
-Reflect.deleteProperty(Headers, 'getHeadersList')
-Reflect.deleteProperty(Headers, 'setHeadersList')
-
-iteratorMixin('Headers', Headers, headersListSortAndCombine, 0, 1)
+iteratorMixin('Headers', Headers, headersListSortAndCombine, 0, 1, webidl.is.Headers)
 
 Object.defineProperties(Headers.prototype, {
   append: kEnumerableProperty,
@@ -84659,18 +85726,18 @@ function fetchFinale (fetchParams, response) {
   //    `Server-Timing` from response’s internal response’s header list.
   // TODO
 
-  // 3. Let processResponseEndOfBody be the following steps:
+  // 3. If fetchParams’s request’s destination is "document", then set fetchParams’s controller’s
+  //    full timing info to fetchParams’s timing info.
+  if (fetchParams.request.destination === 'document') {
+    fetchParams.controller.fullTimingInfo = timingInfo
+  }
+
+  // 4. Let processResponseEndOfBody be the following steps:
   const processResponseEndOfBody = () => {
     // 1. Let unsafeEndTime be the unsafe shared current time.
     const unsafeEndTime = Date.now() // ?
 
-    // 2. If fetchParams’s request’s destination is "document", then set fetchParams’s controller’s
-    //    full timing info to fetchParams’s timing info.
-    if (fetchParams.request.destination === 'document') {
-      fetchParams.controller.fullTimingInfo = timingInfo
-    }
-
-    // 3. Set fetchParams’s controller’s report timing steps to the following steps given a global object global:
+    // 2. Set fetchParams’s controller’s report timing steps to the following steps given a global object global:
     fetchParams.controller.reportTimingSteps = () => {
       // 1. If fetchParams’s request’s URL’s scheme is not an HTTP(S) scheme, then return.
       if (!urlIsHttpHttpsScheme(fetchParams.request.url)) {
@@ -84719,7 +85786,7 @@ function fetchFinale (fetchParams, response) {
       }
     }
 
-    // 4. Let processResponseEndOfBodyTask be the following steps:
+    // 3. Let processResponseEndOfBodyTask be the following steps:
     const processResponseEndOfBodyTask = () => {
       // 1. Set fetchParams’s request’s done flag.
       fetchParams.request.done = true
@@ -84738,11 +85805,11 @@ function fetchFinale (fetchParams, response) {
       }
     }
 
-    // 5. Queue a fetch task to run processResponseEndOfBodyTask with fetchParams’s task destination
+    // 4. Queue a fetch task to run processResponseEndOfBodyTask with fetchParams’s task destination
     queueMicrotask(() => processResponseEndOfBodyTask())
   }
 
-  // 4. If fetchParams’s process response is non-null, then queue a fetch task to run fetchParams’s
+  // 5. If fetchParams’s process response is non-null, then queue a fetch task to run fetchParams’s
   //    process response given response, with fetchParams’s task destination.
   if (fetchParams.processResponse != null) {
     queueMicrotask(() => {
@@ -84751,11 +85818,14 @@ function fetchFinale (fetchParams, response) {
     })
   }
 
-  // 5. Let internalResponse be response, if response is a network error; otherwise response’s internal response.
+  // 6. Let internalResponse be response, if response is a network error; otherwise response’s internal response.
   const internalResponse = response.type === 'error' ? response : (response.internalResponse ?? response)
 
-  // 6. If internalResponse’s body is null, then run processResponseEndOfBody.
-  // 7. Otherwise:
+  // 7. If response is a network error, then run the WebDriver BiDi fetch error steps with request.
+  //    Otherwise, run the WebDriver BiDi response completed steps with request and response.
+
+  // 8. If internalResponse’s body is null, then run processResponseEndOfBody.
+  // 9. Otherwise:
   if (internalResponse.body == null) {
     processResponseEndOfBody()
   } else {
@@ -84772,6 +85842,27 @@ function fetchFinale (fetchParams, response) {
     finished(internalResponse.body.stream, () => {
       processResponseEndOfBody()
     })
+  }
+
+  // 10. If fetchParams’s process response consume body is non-null, then:
+  if (fetchParams.processResponseConsumeBody != null) {
+    // 1. Let processBody given nullOrBytes be this step: run fetchParams’s
+    //    process response consume body given response and nullOrBytes.
+    const processBody = (nullOrBytes) => fetchParams.processResponseConsumeBody(response, nullOrBytes)
+
+    // 2. Let processBodyError be this step: run fetchParams’s process
+    //    response consume body given response and failure.
+    const processBodyError = () => fetchParams.processResponseConsumeBody(response, 'failure')
+
+    // 3. If internalResponse’s body is null, then queue a fetch task to run
+    //    processBody given null, with fetchParams’s task destination.
+    if (internalResponse.body == null) {
+      queueMicrotask(() => processBody(null))
+    } else {
+      // 4. Otherwise, fully read internalResponse’s body given processBody,
+      //    processBodyError, and fetchParams’s task destination.
+      fullyReadBody(internalResponse.body, processBody, processBodyError)
+    }
   }
 }
 
@@ -86152,6 +87243,7 @@ function buildAbort (acRef) {
 }
 
 let patchMethodWarning = false
+let setRequestSignal, getRequestDispatcher, setRequestDispatcher, setRequestHeaders, getRequestState, setRequestState, removeRequestAbortListener
 
 // https://fetch.spec.whatwg.org/#request-class
 class Request {
@@ -86669,7 +87761,7 @@ class Request {
 
   // Returns request’s HTTP method, which is "GET" by default.
   get method () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The method getter steps are to return this’s request’s method.
     return this.#state.method
@@ -86677,7 +87769,7 @@ class Request {
 
   // Returns the URL of request as a string.
   get url () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The url getter steps are to return this’s request’s URL, serialized.
     return URLSerializer(this.#state.url)
@@ -86687,7 +87779,7 @@ class Request {
   // Note that headers added in the network layer by the user agent will not
   // be accounted for in this object, e.g., the "Host" header.
   get headers () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The headers getter steps are to return this’s headers.
     return this.#headers
@@ -86696,7 +87788,7 @@ class Request {
   // Returns the kind of resource requested by request, e.g., "document"
   // or "script".
   get destination () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The destination getter are to return this’s request’s destination.
     return this.#state.destination
@@ -86708,7 +87800,7 @@ class Request {
   // during fetching to determine the value of the `Referer` header of the
   // request being made.
   get referrer () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // 1. If this’s request’s referrer is "no-referrer", then return the
     // empty string.
@@ -86730,7 +87822,7 @@ class Request {
   // This is used during fetching to compute the value of the request’s
   // referrer.
   get referrerPolicy () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The referrerPolicy getter steps are to return this’s request’s referrer policy.
     return this.#state.referrerPolicy
@@ -86740,7 +87832,7 @@ class Request {
   // whether the request will use CORS, or will be restricted to same-origin
   // URLs.
   get mode () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The mode getter steps are to return this’s request’s mode.
     return this.#state.mode
@@ -86750,7 +87842,7 @@ class Request {
   // which is a string indicating whether credentials will be sent with the
   // request always, never, or only when sent to a same-origin URL.
   get credentials () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The credentials getter steps are to return this’s request’s credentials mode.
     return this.#state.credentials
@@ -86760,7 +87852,7 @@ class Request {
   // which is a string indicating how the request will
   // interact with the browser’s cache when fetching.
   get cache () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The cache getter steps are to return this’s request’s cache mode.
     return this.#state.cache
@@ -86771,7 +87863,7 @@ class Request {
   // request will be handled during fetching. A request
   // will follow redirects by default.
   get redirect () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The redirect getter steps are to return this’s request’s redirect mode.
     return this.#state.redirect
@@ -86781,7 +87873,7 @@ class Request {
   // cryptographic hash of the resource being fetched. Its value
   // consists of multiple hashes separated by whitespace. [SRI]
   get integrity () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The integrity getter steps are to return this’s request’s integrity
     // metadata.
@@ -86791,7 +87883,7 @@ class Request {
   // Returns a boolean indicating whether or not request can outlive the
   // global in which it was created.
   get keepalive () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The keepalive getter steps are to return this’s request’s keepalive.
     return this.#state.keepalive
@@ -86800,7 +87892,7 @@ class Request {
   // Returns a boolean indicating whether or not request is for a reload
   // navigation.
   get isReloadNavigation () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The isReloadNavigation getter steps are to return true if this’s
     // request’s reload-navigation flag is set; otherwise false.
@@ -86810,7 +87902,7 @@ class Request {
   // Returns a boolean indicating whether or not request is for a history
   // navigation (a.k.a. back-forward navigation).
   get isHistoryNavigation () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The isHistoryNavigation getter steps are to return true if this’s request’s
     // history-navigation flag is set; otherwise false.
@@ -86821,33 +87913,33 @@ class Request {
   // object indicating whether or not request has been aborted, and its
   // abort event handler.
   get signal () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // The signal getter steps are to return this’s signal.
     return this.#signal
   }
 
   get body () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return this.#state.body ? this.#state.body.stream : null
   }
 
   get bodyUsed () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return !!this.#state.body && util.isDisturbed(this.#state.body.stream)
   }
 
   get duplex () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     return 'half'
   }
 
   // Returns a clone of request.
   clone () {
-    webidl.brandCheck(this, Request)
+    webidl.brandCheck(this, webidl.is.Request)
 
     // 1. If this is unusable, then throw a TypeError.
     if (bodyUnusable(this.#state)) {
@@ -86909,73 +88001,69 @@ class Request {
     return `Request ${nodeUtil.formatWithOptions(options, properties)}`
   }
 
-  /**
-   * @param {Request} request
-   * @param {AbortSignal} newSignal
-   */
-  static setRequestSignal (request, newSignal) {
-    request.#signal = newSignal
-    return request
-  }
+  static {
+    /**
+     * @param {Request} request
+     * @param {AbortSignal} newSignal
+     */
+    setRequestSignal = (request, newSignal) => {
+      request.#signal = newSignal
+    }
 
-  /**
-   * @param {Request} request
-   */
-  static getRequestDispatcher (request) {
-    return request.#dispatcher
-  }
+    /**
+     * @param {Request} request
+     */
+    getRequestDispatcher = (request) => {
+      return request.#dispatcher
+    }
 
-  /**
-   * @param {Request} request
-   * @param {import('../../dispatcher/dispatcher')} newDispatcher
-   */
-  static setRequestDispatcher (request, newDispatcher) {
-    request.#dispatcher = newDispatcher
-  }
+    /**
+     * @param {Request} request
+     * @param {import('../../dispatcher/dispatcher')} newDispatcher
+     */
+    setRequestDispatcher = (request, newDispatcher) => {
+      request.#dispatcher = newDispatcher
+    }
 
-  /**
-   * @param {Request} request
-   * @param {Headers} newHeaders
-   */
-  static setRequestHeaders (request, newHeaders) {
-    request.#headers = newHeaders
-  }
+    /**
+     * @param {Request} request
+     * @param {Headers} newHeaders
+     */
+    setRequestHeaders = (request, newHeaders) => {
+      request.#headers = newHeaders
+    }
 
-  /**
-   * @param {Request} request
-   */
-  static getRequestState (request) {
-    return request.#state
-  }
+    /**
+     * @param {Request} request
+     */
+    getRequestState = (request) => {
+      return request.#state
+    }
 
-  /**
-   * @param {Request} request
-   * @param {any} newState
-   */
-  static setRequestState (request, newState) {
-    request.#state = newState
-  }
+    /**
+     * @param {Request} request
+     * @param {any} newState
+     */
+    setRequestState = (request, newState) => {
+      request.#state = newState
+    }
 
-  /**
-   * Removes the `abort` listener that makes this request's signal follow the
-   * signal passed to its constructor, if any. Idempotent.
-   * @param {Request} request
-   */
-  static removeRequestAbortListener (request) {
-    request.#abortCleanup?.()
+    /**
+     * Removes the `abort` listener that makes this request's signal follow the
+     * signal passed to its constructor, if any. Idempotent.
+     * @param {Request} request
+     */
+    removeRequestAbortListener = (request) => {
+      request.#abortCleanup?.()
+    }
+
+    webidl.is.Request = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { setRequestSignal, getRequestDispatcher, setRequestDispatcher, setRequestHeaders, getRequestState, setRequestState, removeRequestAbortListener } = Request
-Reflect.deleteProperty(Request, 'setRequestSignal')
-Reflect.deleteProperty(Request, 'getRequestDispatcher')
-Reflect.deleteProperty(Request, 'setRequestDispatcher')
-Reflect.deleteProperty(Request, 'setRequestHeaders')
-Reflect.deleteProperty(Request, 'getRequestState')
-Reflect.deleteProperty(Request, 'setRequestState')
-Reflect.deleteProperty(Request, 'removeRequestAbortListener')
-
-mixinBody(Request, getRequestState)
+mixinBody(Request, getRequestState, webidl.is.Request)
 
 // https://fetch.spec.whatwg.org/#requests
 function makeRequest (init) {
@@ -87089,8 +88177,6 @@ Object.defineProperties(Request.prototype, {
     configurable: true
   }
 })
-
-webidl.is.Request = webidl.util.MakeTypeAssertion(Request)
 
 /**
  * @param {*} V
@@ -87244,6 +88330,7 @@ const assert = __nccwpck_require2_(4589)
 const { isomorphicEncode, serializeJavascriptValueToJSONString } = __nccwpck_require2_(8116)
 
 const textEncoder = new TextEncoder('utf-8')
+let getResponseHeaders, setResponseHeaders, getResponseState, setResponseState
 
 // https://fetch.spec.whatwg.org/#response-class
 class Response {
@@ -87366,7 +88453,7 @@ class Response {
 
   // Returns response’s type, e.g., "cors".
   get type () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The type getter steps are to return this’s response’s type.
     return this.#state.type
@@ -87374,7 +88461,7 @@ class Response {
 
   // Returns response’s URL, if it has one; otherwise the empty string.
   get url () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     const urlList = this.#state.urlList
 
@@ -87392,7 +88479,7 @@ class Response {
 
   // Returns whether response was obtained through a redirect.
   get redirected () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The redirected getter steps are to return true if this’s response’s URL
     // list has more than one item; otherwise false.
@@ -87401,7 +88488,7 @@ class Response {
 
   // Returns response’s status.
   get status () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The status getter steps are to return this’s response’s status.
     return this.#state.status
@@ -87409,7 +88496,7 @@ class Response {
 
   // Returns whether response’s status is an ok status.
   get ok () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The ok getter steps are to return true if this’s response’s status is an
     // ok status; otherwise false.
@@ -87418,7 +88505,7 @@ class Response {
 
   // Returns response’s status message.
   get statusText () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The statusText getter steps are to return this’s response’s status
     // message.
@@ -87427,27 +88514,27 @@ class Response {
 
   // Returns response’s headers as Headers.
   get headers () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // The headers getter steps are to return this’s headers.
     return this.#headers
   }
 
   get body () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     return this.#state.body ? this.#state.body.stream : null
   }
 
   get bodyUsed () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     return !!this.#state.body && util.isDisturbed(this.#state.body.stream)
   }
 
   // Returns a clone of response.
   clone () {
-    webidl.brandCheck(this, Response)
+    webidl.brandCheck(this, webidl.is.Response)
 
     // 1. If this is unusable, then throw a TypeError.
     if (bodyUnusable(this.#state)) {
@@ -87493,44 +88580,44 @@ class Response {
     return `Response ${nodeUtil.formatWithOptions(options, properties)}`
   }
 
-  /**
-   * @param {Response} response
-   */
-  static getResponseHeaders (response) {
-    return response.#headers
-  }
+  static {
+    /**
+     * @param {Response} response
+     */
+    getResponseHeaders = (response) => {
+      return response.#headers
+    }
 
-  /**
-   * @param {Response} response
-   * @param {Headers} newHeaders
-   */
-  static setResponseHeaders (response, newHeaders) {
-    response.#headers = newHeaders
-  }
+    /**
+     * @param {Response} response
+     * @param {Headers} newHeaders
+     */
+    setResponseHeaders = (response, newHeaders) => {
+      response.#headers = newHeaders
+    }
 
-  /**
-   * @param {Response} response
-   */
-  static getResponseState (response) {
-    return response.#state
-  }
+    /**
+     * @param {Response} response
+     */
+    getResponseState = (response) => {
+      return response.#state
+    }
 
-  /**
-   * @param {Response} response
-   * @param {any} newState
-   */
-  static setResponseState (response, newState) {
-    response.#state = newState
+    /**
+     * @param {Response} response
+     * @param {any} newState
+     */
+    setResponseState = (response, newState) => {
+      response.#state = newState
+    }
+
+    webidl.is.Response = (arg) => {
+      return arg != null && typeof arg === 'object' && #state in arg
+    }
   }
 }
 
-const { getResponseHeaders, setResponseHeaders, getResponseState, setResponseState } = Response
-Reflect.deleteProperty(Response, 'getResponseHeaders')
-Reflect.deleteProperty(Response, 'setResponseHeaders')
-Reflect.deleteProperty(Response, 'getResponseState')
-Reflect.deleteProperty(Response, 'setResponseState')
-
-mixinBody(Response, getResponseState)
+mixinBody(Response, getResponseState, webidl.is.Response)
 
 Object.defineProperties(Response.prototype, {
   type: kEnumerableProperty,
@@ -87845,8 +88932,6 @@ webidl.converters.ResponseInit = webidl.dictionaryConverter([
   }
 ])
 
-webidl.is.Response = webidl.util.MakeTypeAssertion(Response)
-
 module.exports = {
   isNetworkError,
   makeNetworkError,
@@ -87874,7 +88959,7 @@ const { redirectStatusSet, referrerPolicyTokens, badPortsSet } = __nccwpck_requi
 const { getGlobalOrigin } = __nccwpck_require2_(1059)
 const { collectAnHTTPQuotedString, parseMIMEType } = __nccwpck_require2_(1900)
 const { performance } = __nccwpck_require2_(643)
-const { ReadableStreamFrom, isValidHTTPToken, normalizedMethodRecordsBase } = __nccwpck_require2_(3440)
+const { isValidHTTPToken, normalizedMethodRecordsBase } = __nccwpck_require2_(3440)
 const assert = __nccwpck_require2_(4589)
 const { isUint8Array } = __nccwpck_require2_(3429)
 const { webidl } = __nccwpck_require2_(7879)
@@ -88740,8 +89825,9 @@ function createIterator (name, kInternalIterator, keyIndex = 0, valueIndex = 1) 
  * @param {(target: any) => any} kInternalIterator
  * @param {string | number} [keyIndex]
  * @param {string | number} [valueIndex]
+ * @param {import('../../../types/webidl').WebidlIsFunction} brandCheck
  */
-function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueIndex = 1) {
+function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueIndex = 1, brandCheck) {
   const makeIterator = createIterator(name, kInternalIterator, keyIndex, valueIndex)
 
   const properties = {
@@ -88750,7 +89836,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function keys () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'key')
       }
     },
@@ -88759,7 +89845,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function values () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'value')
       }
     },
@@ -88768,7 +89854,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function entries () {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         return makeIterator(this, 'key+value')
       }
     },
@@ -88777,7 +89863,7 @@ function iteratorMixin (name, object, kInternalIterator, keyIndex = 0, valueInde
       enumerable: true,
       configurable: true,
       value: function forEach (callbackfn, thisArg = globalThis) {
-        webidl.brandCheck(this, object)
+        webidl.brandCheck(this, brandCheck)
         webidl.argumentLengthCheck(arguments, 1, `${name}.forEach`)
         if (typeof callbackfn !== 'function') {
           throw new TypeError(
@@ -89351,7 +90437,6 @@ module.exports = {
   isAborted,
   isCancelled,
   isValidEncodedURL,
-  ReadableStreamFrom,
   tryUpgradeRequestToAPotentiallyTrustworthyURL,
   clampAndCoarsenConnectionTimingInfo,
   coarsenedSharedCurrentTime,
@@ -89562,6 +90647,20 @@ function isomorphicEncode (input) {
   return input
 }
 
+const nonASCIIRegex = /[^\x00-\x7F]/ // eslint-disable-line no-control-regex
+
+/**
+ * @param {string} str
+ * @returns {string}
+ *
+ * @see https://infra.spec.whatwg.org/#ascii-lowercase
+ */
+function asciiLowercase (str) {
+  return nonASCIIRegex.test(str)
+    ? str.replace(/[A-Z]+/g, (upper) => upper.toLowerCase())
+    : str.toLowerCase()
+}
+
 /**
  * @see https://infra.spec.whatwg.org/#parse-json-bytes-to-a-javascript-value
  * @param {Uint8Array} bytes
@@ -89598,7 +90697,7 @@ function removeChars (str, leading, trailing, predicate) {
   }
 
   if (trailing) {
-    while (trail > 0 && predicate(str.charCodeAt(trail))) trail--
+    while (trail >= lead && predicate(str.charCodeAt(trail))) trail--
   }
 
   return lead === 0 && trail === str.length - 1 ? str : str.slice(lead, trail + 1)
@@ -89622,6 +90721,7 @@ function serializeJavascriptValueToJSONString (value) {
 }
 
 module.exports = {
+  asciiLowercase,
   collectASequenceOfCodePoints,
   collectASequenceOfCodePointsFast,
   forgivingBase64,
@@ -90031,23 +91131,11 @@ webidl.errors.invalidArgument = function (context) {
 }
 
 // https://webidl.spec.whatwg.org/#implements
-webidl.brandCheck = function (V, I) {
-  if (!FunctionPrototypeSymbolHasInstance(I, V)) {
+webidl.brandCheck = function (V, is) {
+  if (!is(V)) {
     const err = new TypeError('Illegal invocation')
     err.code = 'ERR_INVALID_THIS' // node compat.
     throw err
-  }
-}
-
-webidl.brandCheckMultiple = function (List) {
-  const prototypes = List.map((c) => webidl.util.MakeTypeAssertion(c))
-
-  return (V) => {
-    if (prototypes.every(typeCheck => !typeCheck(V))) {
-      const err = new TypeError('Illegal invocation')
-      err.code = 'ERR_INVALID_THIS' // node compat.
-      throw err
-    }
   }
 }
 
@@ -91445,6 +92533,8 @@ const { webidl } = __nccwpck_require2_(7879)
 const { kEnumerableProperty } = __nccwpck_require2_(3440)
 const { kConstruct } = __nccwpck_require2_(6443)
 
+let createFastMessageEvent
+
 /**
  * @see https://html.spec.whatwg.org/multipage/comms.html#messageevent
  */
@@ -91471,31 +92561,31 @@ class MessageEvent extends Event {
   }
 
   get data () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.data
   }
 
   get origin () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.origin
   }
 
   get lastEventId () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.lastEventId
   }
 
   get source () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     return this.#eventInit.source
   }
 
   get ports () {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     if (!Object.isFrozen(this.#eventInit.ports)) {
       Object.freeze(this.#eventInit.ports)
@@ -91514,7 +92604,7 @@ class MessageEvent extends Event {
     source = null,
     ports = []
   ) {
-    webidl.brandCheck(this, MessageEvent)
+    webidl.brandCheck(this, webidl.is.MessageEvent)
 
     webidl.argumentLengthCheck(arguments, 1, 'MessageEvent.initMessageEvent')
 
@@ -91523,20 +92613,23 @@ class MessageEvent extends Event {
     })
   }
 
-  static createFastMessageEvent (type, init) {
-    const messageEvent = new MessageEvent(kConstruct, type, init)
-    messageEvent.#eventInit = init
-    messageEvent.#eventInit.data ??= null
-    messageEvent.#eventInit.origin ??= ''
-    messageEvent.#eventInit.lastEventId ??= ''
-    messageEvent.#eventInit.source ??= null
-    messageEvent.#eventInit.ports ??= []
-    return messageEvent
+  static {
+    createFastMessageEvent = (type, init) => {
+      const messageEvent = new MessageEvent(kConstruct, type, init)
+      messageEvent.#eventInit = init
+      messageEvent.#eventInit.data ??= null
+      messageEvent.#eventInit.origin ??= ''
+      messageEvent.#eventInit.lastEventId ??= ''
+      messageEvent.#eventInit.source ??= null
+      messageEvent.#eventInit.ports ??= []
+      return messageEvent
+    }
+
+    webidl.is.MessageEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
-
-const { createFastMessageEvent } = MessageEvent
-delete MessageEvent.createFastMessageEvent
 
 /**
  * @see https://websockets.spec.whatwg.org/#the-closeevent-interface
@@ -91558,21 +92651,27 @@ class CloseEvent extends Event {
   }
 
   get wasClean () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.wasClean
   }
 
   get code () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.code
   }
 
   get reason () {
-    webidl.brandCheck(this, CloseEvent)
+    webidl.brandCheck(this, webidl.is.CloseEvent)
 
     return this.#eventInit.reason
+  }
+
+  static {
+    webidl.is.CloseEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
 
@@ -91594,33 +92693,39 @@ class ErrorEvent extends Event {
   }
 
   get message () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.message
   }
 
   get filename () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.filename
   }
 
   get lineno () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.lineno
   }
 
   get colno () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.colno
   }
 
   get error () {
-    webidl.brandCheck(this, ErrorEvent)
+    webidl.brandCheck(this, webidl.is.ErrorEvent)
 
     return this.#eventInit.error
+  }
+
+  static {
+    webidl.is.ErrorEvent = (arg) => {
+      return arg != null && typeof arg === 'object' && #eventInit in arg
+    }
   }
 }
 
@@ -92397,6 +93502,11 @@ class ByteParser extends Writable {
   consumeFragments () {
     const fragments = this.#fragments
 
+    // The compressed flag describes the message that is being completed here.
+    // It must not survive into the next message, otherwise a stray
+    // continuation frame is accepted instead of failing the connection.
+    this.#info.compressed = false
+
     if (fragments.length === 1) {
       // single fragment
       this.#fragmentsBytes = 0
@@ -92686,6 +93796,8 @@ function createInheritableDOMException () {
   })
 }
 
+let createUnvalidatedWebSocketError
+
 class WebSocketError extends createInheritableDOMException() {
   #closeCode
   #reason
@@ -92737,16 +93849,19 @@ class WebSocketError extends createInheritableDOMException() {
    * @param {number|null} code
    * @param {string} reason
    */
-  static createUnvalidatedWebSocketError (message, code, reason) {
-    const error = new WebSocketError(message, kConstruct)
-    error.#closeCode = code
-    error.#reason = reason
-    return error
+  static {
+    createUnvalidatedWebSocketError = (message, code, reason) => {
+      const error = new WebSocketError(message, kConstruct)
+      error.#closeCode = code
+      error.#reason = reason
+      return error
+    }
+
+    webidl.is.WebSocketError = (arg) => {
+      return arg != null && typeof arg === 'object' && #reason in arg
+    }
   }
 }
-
-const { createUnvalidatedWebSocketError } = WebSocketError
-delete WebSocketError.createUnvalidatedWebSocketError
 
 Object.defineProperties(WebSocketError.prototype, {
   closeCode: kEnumerableProperty,
@@ -92758,8 +93873,6 @@ Object.defineProperties(WebSocketError.prototype, {
     configurable: true
   }
 })
-
-webidl.is.WebSocketError = webidl.util.MakeTypeAssertion(WebSocketError)
 
 module.exports = { WebSocketError, createUnvalidatedWebSocketError }
 
@@ -93659,6 +94772,8 @@ const { channels } = __nccwpck_require2_(2414)
 const kRef = Symbol.for('nodejs.ref')
 const kUnref = Symbol.for('nodejs.unref')
 
+let ping
+
 function getSocketAddress (socket) {
   if (typeof socket?.address === 'function') {
     return socket.address()
@@ -93829,16 +94944,14 @@ class WebSocket extends EventTarget {
     this.#binaryType = 'blob'
   }
 
+  // TODO: remove this
   [kRef] () {
-    webidl.brandCheck(this, WebSocket)
-
     this.#refed = true
     this.#handler.socket?.ref?.()
   }
 
+  // TODO: remove this
   [kUnref] () {
-    webidl.brandCheck(this, WebSocket)
-
     this.#refed = false
     this.#handler.socket?.unref?.()
   }
@@ -93849,7 +94962,7 @@ class WebSocket extends EventTarget {
    * @param {string|undefined} reason
    */
   close (code = undefined, reason = undefined) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     const prefix = 'WebSocket.close'
 
@@ -93876,7 +94989,7 @@ class WebSocket extends EventTarget {
    * @param {NodeJS.TypedArray|ArrayBuffer|Blob|string} data
    */
   send (data) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     const prefix = 'WebSocket.send'
     webidl.argumentLengthCheck(arguments, 1, prefix)
@@ -93970,45 +95083,45 @@ class WebSocket extends EventTarget {
   }
 
   get readyState () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     // The readyState getter steps are to return this's ready state.
     return this.#handler.readyState
   }
 
   get bufferedAmount () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#bufferedAmount
   }
 
   get url () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     // The url getter steps are to return this's url, serialized.
     return URLSerializer(this.#url)
   }
 
   get extensions () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#extensions
   }
 
   get protocol () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#protocol
   }
 
   get onopen () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.open
   }
 
   set onopen (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.open) {
       this.removeEventListener('open', this.#events.open)
@@ -94025,13 +95138,13 @@ class WebSocket extends EventTarget {
   }
 
   get onerror () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.error
   }
 
   set onerror (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.error) {
       this.removeEventListener('error', this.#events.error)
@@ -94048,13 +95161,13 @@ class WebSocket extends EventTarget {
   }
 
   get onclose () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.close
   }
 
   set onclose (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.close) {
       this.removeEventListener('close', this.#events.close)
@@ -94071,13 +95184,13 @@ class WebSocket extends EventTarget {
   }
 
   get onmessage () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#events.message
   }
 
   set onmessage (fn) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (this.#events.message) {
       this.removeEventListener('message', this.#events.message)
@@ -94094,13 +95207,13 @@ class WebSocket extends EventTarget {
   }
 
   get binaryType () {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     return this.#binaryType
   }
 
   set binaryType (type) {
-    webidl.brandCheck(this, WebSocket)
+    webidl.brandCheck(this, webidl.is.WebSocket)
 
     if (type !== 'blob' && type !== 'arraybuffer') {
       this.#binaryType = 'blob'
@@ -94285,32 +95398,35 @@ class WebSocket extends EventTarget {
     }
   }
 
-  /**
-   * @param {WebSocket} ws
-   * @param {Buffer|undefined} buffer
-   */
-  static ping (ws, buffer) {
-    if (Buffer.isBuffer(buffer)) {
-      if (buffer.length > 125) {
-        throw new TypeError('A PING frame cannot have a body larger than 125 bytes.')
+  static {
+    /**
+     * @param {WebSocket} ws
+     * @param {Buffer|undefined} buffer
+     */
+    ping = (ws, buffer) => {
+      if (Buffer.isBuffer(buffer)) {
+        if (buffer.length > 125) {
+          throw new TypeError('A PING frame cannot have a body larger than 125 bytes.')
+        }
+      } else if (buffer !== undefined) {
+        throw new TypeError('Expected buffer payload')
       }
-    } else if (buffer !== undefined) {
-      throw new TypeError('Expected buffer payload')
+
+      // An endpoint MAY send a Ping frame any time after the connection is
+      // established and before the connection is closed.
+      const readyState = ws.#handler.readyState
+
+      if (isEstablished(readyState) && !isClosing(readyState) && !isClosed(readyState)) {
+        const frame = new WebsocketFrameSend(buffer)
+        ws.#handler.socket.write(frame.createFrame(opcodes.PING))
+      }
     }
 
-    // An endpoint MAY send a Ping frame any time after the connection is
-    // established and before the connection is closed.
-    const readyState = ws.#handler.readyState
-
-    if (isEstablished(readyState) && !isClosing(readyState) && !isClosed(readyState)) {
-      const frame = new WebsocketFrameSend(buffer)
-      ws.#handler.socket.write(frame.createFrame(opcodes.PING))
+    webidl.is.WebSocket = (arg) => {
+      return arg != null && typeof arg === 'object' && #handler in arg
     }
   }
 }
-
-const { ping } = WebSocket
-Reflect.deleteProperty(WebSocket, 'ping')
 
 // https://websockets.spec.whatwg.org/#dom-websocket-connecting
 WebSocket.CONNECTING = WebSocket.prototype.CONNECTING = states.CONNECTING
