@@ -152,7 +152,7 @@ jobs:
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
      
       - name: Set commit status
-        uses: myrotvorets/set-commit-status-action@abbe2bbb378e5e47254afb8a430bf66637a22893 # master
+        uses: myrotvorets/set-commit-status-action@69264e2543e9fe86b170053b24fcfb93c318c5c8 # master
         if: always()
         with:
           allowForks: true
